@@ -10,6 +10,10 @@ import 'package:kisangro/login/login.dart';
 import 'package:provider/provider.dart';
 import '../home/theme_mode_provider.dart';
 
+import 'package:geolocator/geolocator.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+import 'dart:io';
+
 class splashscreen extends StatefulWidget {
   const splashscreen({super.key});
 
@@ -30,6 +34,9 @@ class _splashscreenState extends State<splashscreen> {
     if (!mounted) {
       return;
     }
+
+    // ---------------- STORE LOCATION & DEVICE ID ----------------
+    await _storeLocationAndDeviceId();
 
     try {
       debugPrint('SplashScreen: Starting to load product data...');
@@ -76,6 +83,62 @@ class _splashscreenState extends State<splashscreen> {
           MaterialPageRoute(builder: (context) => const secondscreen()),
         );
       }
+    }
+  }
+
+  // ================= LOCATION + DEVICE ID =================
+
+  Future<void> _storeLocationAndDeviceId() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    // -------- LOCATION --------
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return;
+
+      LocationPermission permission =
+          await Geolocator.checkPermission();
+
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return;
+      }
+
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      await prefs.setDouble('latitude', position.latitude);
+      await prefs.setDouble('longitude', position.longitude);
+
+      debugPrint(
+          'Location saved: ${position.latitude}, ${position.longitude}');
+    } catch (e) {
+      debugPrint('Location error: $e');
+    }
+
+    // -------- DEVICE ID --------
+    try {
+      final deviceInfo = DeviceInfoPlugin();
+      String deviceId = '';
+
+      if (Platform.isAndroid) {
+        final androidInfo = await deviceInfo.androidInfo;
+        deviceId = androidInfo.id ?? androidInfo.device;
+      } else if (Platform.isIOS) {
+        final iosInfo = await deviceInfo.iosInfo;
+        deviceId = iosInfo.identifierForVendor ?? '';
+      }
+
+      await prefs.setString('device_id', deviceId);
+
+      debugPrint('Device ID saved: $deviceId');
+    } catch (e) {
+      debugPrint('Device ID error: $e');
     }
   }
 
