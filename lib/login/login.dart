@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
+import 'package:sms_autofill/sms_autofill.dart';
 import '../home/theme_mode_provider.dart';
 import 'package:kisangro/login/otp.dart';
 import 'package:kisangro/login/registration.dart';
@@ -36,189 +37,159 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
   String _enteredPhoneNumber = '';
   bool isValidNumber = false;
   bool _isLoading = false;
+  String _appSignature = '';
 
-  static const String _loginApiUrl = 'https://sgserp.in/erp/api/m_api/';
-  static const String _checkRegistrationApiUrl = 'https://sgserp.in/erp/api/m_api/';
 
+  static const String _loginApiUrl = 'https://erpsmart.in/total/api/m_api/';
+
+@override
+void initState() {
+  super.initState();
+  _loadAppSignature();
+}
+
+Future<void> _loadAppSignature() async {
+  final signature = await _getLiveAppSignature();
+  setState(() {
+    _appSignature = signature;
+  });
+
+  debugPrint("LIVE APP SIGNATURE: $_appSignature");
+}
+
+
+  Future<String> _getLiveAppSignature() async {
+  try {
+    final signature = await SmsAutoFill().getAppSignature;
+    return signature ?? '';
+  } catch (e) {
+    debugPrint('App signature error: $e');
+    return '';
+  }
+}
+
+  
   // Check if user is registered before sending OTP - only check for cus_id
-  Future<bool> _checkUserRegistration(String mobile) async {
-    try {
-      Uri url = Uri.parse(_checkRegistrationApiUrl);
 
-      Map<String, String> body = {
-        'cid': '23262954',
-        'type': '1002', // Using login type to check registration
-        'lt': '23233443',
-        'ln': '43432323',
-        'device_id': '3453434',
-        'mobile': mobile,
-      };
 
-      debugPrint("Check Registration API URL: $url");
-      debugPrint("Check Registration Request Body: $body");
 
-      final response = await http.post(
-        url,
-        headers: <String, String>{
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: body,
-      ).timeout(const Duration(seconds: 10));
-
-      debugPrint('Check Registration Response Status Code: ${response.statusCode}');
-      debugPrint('Check Registration Raw Response Body: ${response.body}');
-
-      if (response.statusCode == 200) {
-        String? contentType = response.headers['content-type'];
-        if (contentType != null && contentType.contains('application/json')) {
-          try {
-            final Map<String, dynamic> responseData = jsonDecode(response.body);
-            debugPrint('Parsed Check Registration API Response: $responseData');
-
-            // Only check if cus_id exists in the response
-            // If cus_id exists, user is registered
-            return responseData.containsKey('cus_id');
-          } on FormatException catch (e) {
-            
-            debugPrint('FormatException: $e. Raw response: ${response.body}');
-            return false;
-          }
-        } else {
-          debugPrint('Non-JSON response. Content-Type: $contentType, Raw response: ${response.body}');
-          return false;
-        }
-      } else {
-        debugPrint('Failed to connect to the server. Status Code: ${response.statusCode}');
-        return false;
-      }
-    } catch (e) {
-      debugPrint('Network/API Error: $e');
-      return false;
-    }
+ Future<void> _sendOtp() async {
+  if (!isChecked || !isValidNumber) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Please accept terms and enter a valid 10-digit mobile number.',
+          style: GoogleFonts.poppins(),
+        ),
+      ),
+    );
+    return;
   }
 
-  Future<void> _sendOtp() async {
-    if (!isChecked || !isValidNumber) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text('Please accept terms and enter a valid 10-digit mobile number.',
-                style: GoogleFonts.poppins())),
-      );
-      return;
-    }
+  setState(() {
+    _isLoading = true;
+  });
 
-    setState(() {
-      _isLoading = true;
-    });
+  try {
+    final prefs = await SharedPreferences.getInstance();
 
-    try {
-      // First check if the user is registered by checking for cus_id
-      bool isRegistered = await _checkUserRegistration(_enteredPhoneNumber);
+    double? latitude = prefs.getDouble('latitude');
+    double? longitude = prefs.getDouble('longitude');
+    String? deviceId = prefs.getString('device_id');
 
-      if (!isRegistered) {
+    Uri url = Uri.parse(_loginApiUrl);
+
+    Map<String, String> body = {
+      'cid': '85788578',
+      'type': '1002',
+      'lt': latitude?.toString() ?? '',
+      'ln': longitude?.toString() ?? '',
+      'device_id': deviceId ?? '',
+      'mobile': _enteredPhoneNumber,
+      'app_signature': _appSignature,
+   
+    };
+
+    debugPrint("LOGIN API BODY: $body");
+
+    final response = await http.post(
+      url,
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: body,
+    ).timeout(const Duration(seconds: 10));
+
+    debugPrint("STATUS: ${response.statusCode}");
+    debugPrint("RESPONSE: ${response.body}");
+
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> data = jsonDecode(response.body);
+
+      /// ✅ REGISTERED USER
+      if (data.containsKey('cus_id')) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Please register before logging in.', style: GoogleFonts.poppins()),
+            content: Text(
+              data['error_msg'] ?? 'OTP sent successfully',
+              style: GoogleFonts.poppins(),
+            ),
+          ),
+        );
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => OtpScreen(phoneNumber: _enteredPhoneNumber),
+          ),
+        );
+      }
+
+      /// ❌ NOT REGISTERED USER
+      else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Mobile number not registered. Please create an account.',
+              style: GoogleFonts.poppins(),
+            ),
             backgroundColor: const Color(0xffEB7720),
           ),
         );
-        setState(() {
-          _isLoading = false;
-        });
-        return;
-      }
 
-      // If registered (cus_id exists), proceed with OTP sending
-      Uri url = Uri.parse(_loginApiUrl);
-
-      Map<String, String> body = {
-        'cid': '23262954',
-        'type': '1002',
-        'lt': '23233443',
-        'ln': '43432323',
-        'device_id': '3453434',
-        'mobile': _enteredPhoneNumber,
-      };
-
-      debugPrint("Login API URL: $url");
-      debugPrint("Login Request Body: $body");
-
-      final response = await http.post(
-        url,
-        headers: <String, String>{
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: body,
-      ).timeout(const Duration(seconds: 10));
-
-      debugPrint('Login Response Status Code: ${response.statusCode}');
-      debugPrint('Raw Login Response Body: ${response.body}');
-
-      if (response.statusCode == 200) {
-        String? contentType = response.headers['content-type'];
-        if (contentType != null && contentType.contains('application/json')) {
-          try {
-            final Map<String, dynamic> responseData = jsonDecode(response.body);
-            debugPrint('Parsed Login API Response: $responseData');
-
-            if (responseData['error'] == false) {
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.setBool('isLoggedIn', false);
-
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                    content: Text(responseData['error_msg'] ?? 'OTP sent successfully!',
-                        style: GoogleFonts.poppins())),
-              );
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => OtpScreen(phoneNumber: _enteredPhoneNumber),
-                ),
-              );
-            } else {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                    content: Text(responseData['error_msg'] ?? 'Login failed. Please try again.',
-                        style: GoogleFonts.poppins())),
-              );
-            }
-          } on FormatException catch (e) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                  content: Text('Server returned an unexpected response format. Please try again. Error: $e',
-                      style: GoogleFonts.poppins())),
-            );
-            debugPrint('FormatException: $e. Raw response: ${response.body}');
-          }
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-                content: Text('Server returned an unexpected response (not JSON). Please try again.',
-                    style: GoogleFonts.poppins())),
-          );
-          debugPrint('Non-JSON response. Content-Type: $contentType, Raw response: ${response.body}');
-        }
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Failed to connect to the server. Status Code: ${response.statusCode}',
-                  style: GoogleFonts.poppins())),
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const RegistrationScreen(),
+          ),
         );
       }
-    } catch (e) {
+    } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text('Network Error: $e. Please check your internet connection.',
-                style: GoogleFonts.poppins())),
+          content: Text(
+            'Server error. Please try again.',
+            style: GoogleFonts.poppins(),
+          ),
+        ),
       );
-      debugPrint('Network/API Error: $e');
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
     }
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Network error: $e',
+          style: GoogleFonts.poppins(),
+        ),
+      ),
+    );
+  } finally {
+    setState(() {
+      _isLoading = false;
+    });
   }
+}
+
 
   void _navigateToRegistration() {
     Navigator.push(

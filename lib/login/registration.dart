@@ -8,6 +8,8 @@ import 'dart:math';
 import 'package:confetti/confetti.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+
 
 class RegistrationScreen extends StatefulWidget {
   const RegistrationScreen({super.key});
@@ -36,7 +38,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   bool _showCaptchaSection = false;
   bool _showSecurityBox = true;
 
-  static const String _apiUrl = 'https://sgserp.in/erp/api/m_api/';
+  static const String _apiUrl = 'https://erpsmart.in/total/api/m_api/';
 
   @override
   void initState() {
@@ -192,16 +194,23 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     try {
       Uri url = Uri.parse(_apiUrl);
 
-      Map<String, String> body = {
-        'cid': '23262954',
-        'ln': '123',
-        'lt': '23',
-        'device_id': '122',
-        'name': _nameController.text,
-        'mobile': _enteredPhoneNumber,
-        'email': _emailController.text,
-        'type': '1005',
-      };
+final prefs = await SharedPreferences.getInstance();
+
+double? latitude = prefs.getDouble('latitude');
+double? longitude = prefs.getDouble('longitude');
+String? deviceId = prefs.getString('device_id');
+
+Map<String, String> body = {
+  'cid': '85788578',
+  'ln': longitude?.toString() ?? '',
+  'lt': latitude?.toString() ?? '',
+  'device_id': deviceId ?? '',
+  'name': _nameController.text,
+  'mobile': _enteredPhoneNumber,
+  'email': _emailController.text,
+  'type': '1003',
+};
+
       
 
       debugPrint("Registration API URL: $url");

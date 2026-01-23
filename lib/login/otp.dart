@@ -4,18 +4,17 @@ import 'package:kisangro/models/kyc_business_model.dart';
 import 'package:kisangro/models/kyc_image_provider.dart';
 import 'package:pin_code_fields/pin_code_fields.dart';
 import 'dart:async';
-import 'package:kisangro/login/kyc.dart'; // Update the path if needed
+import 'package:kisangro/login/kyc.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:http/http.dart' as http; // Import the http package
-import 'dart:convert'; // For JSON encoding/decoding
-import 'package:shared_preferences/shared_preferences.dart'; // Import for SharedPreferences
-import 'package:kisangro/home/bottom.dart'; // Import the Bot widget for home navigation
-import 'package:provider/provider.dart'; // Import Provider
-import '../home/theme_mode_provider.dart'; // Import ThemeModeProvider
-
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:kisangro/home/bottom.dart';
+import 'package:provider/provider.dart';
+import '../home/theme_mode_provider.dart';
+import 'package:sms_autofill/sms_autofill.dart'; // Added for OTP autofill
 
 class OtpScreen extends StatefulWidget {
-  // Added phoneNumber as a required parameter
   final String phoneNumber;
 
   const OtpScreen({super.key, required this.phoneNumber});
@@ -24,21 +23,56 @@ class OtpScreen extends StatefulWidget {
   State<OtpScreen> createState() => _OtpScreenState();
 }
 
-class _OtpScreenState extends State<OtpScreen> {
+class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
   TextEditingController otpController = TextEditingController();
   Timer? _timer;
   int _start = 30;
   bool canResend = false;
   bool isOtpFilled = false;
-  bool _isVerifying = false; // To show loading state during verification
+  bool _isVerifying = false;
+  String _appSignature = '';
+  String? _otpCode;
 
-  // Define your API URL as a constant for easy modification
-  static const String _verifyOtpApiUrl = 'https://sgserp.in/erp/api/m_api/';
+  static const String _verifyOtpApiUrl = 'https://erpsmart.in/total/api/m_api/';
+
+  @override
+  void codeUpdated() {
+    setState(() {
+      if (code != null && code!.length == 6) {
+        otpController.text = code!;
+        isOtpFilled = true;
+      }
+    });
+  }
 
   @override
   void initState() {
     super.initState();
     startTimer();
+    _initAutoFill();
+    _loadAppSignature();
+  }
+
+  Future<void> _initAutoFill() async {
+    await SmsAutoFill().listenForCode();
+  }
+
+  Future<void> _loadAppSignature() async {
+    final signature = await _getLiveAppSignature();
+    setState(() {
+      _appSignature = signature;
+    });
+    debugPrint("OTP SCREEN LIVE APP SIGNATURE: $_appSignature");
+  }
+
+  Future<String> _getLiveAppSignature() async {
+    try {
+      final signature = await SmsAutoFill().getAppSignature;
+      return signature ?? '';
+    } catch (e) {
+      debugPrint('App signature error: $e');
+      return '';
+    }
   }
 
   void startTimer() {
@@ -74,24 +108,31 @@ class _OtpScreenState extends State<OtpScreen> {
     }
 
     setState(() {
-      _isVerifying = true; // Start loading
+      _isVerifying = true;
     });
 
     try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      // Get values from SharedPreferences (same as login screen)
+      double? latitude = prefs.getDouble('latitude');
+      double? longitude = prefs.getDouble('longitude');
+      String? deviceId = prefs.getString('device_id');
+
       Uri url = Uri.parse(_verifyOtpApiUrl);
 
-      // Construct the body with the verification parameters from the user's request
+      // Construct the body with values from SharedPreferences
       Map<String, String> body = {
-        'cid': '23262954',
-        'type': '1003',
-        'ln': '322334',
-        'lt': '233432',
-        'device_id': '122334',
+        'cid': '85788578',
+        'type': '1004', // OTP verification type
+        'ln': longitude?.toString() ?? '',
+        'lt': latitude?.toString() ?? '',
+        'device_id': deviceId ?? '',
         'mobile': widget.phoneNumber,
         'otp': otpController.text,
       };
 
-      debugPrint("Sending OTP verification request to $_verifyOtpApiUrl with body: $body");
+      debugPrint("OTP Verification API BODY: $body");
 
       final response = await http.post(
         url,
@@ -99,45 +140,41 @@ class _OtpScreenState extends State<OtpScreen> {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: body,
-      ).timeout(const Duration(seconds: 10)); // Add a timeout for network requests
+      ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> responseData = jsonDecode(response.body);
-        debugPrint('OTP Verification API Response: $responseData'); // Debug print
+        debugPrint('OTP Verification API Response: $responseData');
 
         if (responseData['error'] == false) {
-          // OTP verification successful
           final prefs = await SharedPreferences.getInstance();
-          await prefs.setBool('isLoggedIn', true); // Set isLoggedIn to true upon successful OTP verification
+          await prefs.setBool('isLoggedIn', true);
 
-          // IMPORTANT: Clear existing KYC data for new user login
-       // In otp.dart, inside _verifyOtp() method:
-try {
-  // Get the providers and clear their data
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    try {
-      final kycBusinessDataProvider = Provider.of<KycBusinessDataProvider>(context, listen: false);
-      final kycImageProvider = Provider.of<KycImageProvider>(context, listen: false);
-      
-      // Clear existing data - NOTE: Use clearKycData() not clearKycBusinessData()
-      kycBusinessDataProvider.clearKycData(); // Changed this
-      kycImageProvider.clearKycImage();
-      
-      debugPrint('Cleared existing KYC data for new user login');
-    } catch (e) {
-      debugPrint('Error clearing KYC data: $e. This is normal if providers are not initialized yet.');
-    }
-  });
-} catch (e) {
-  debugPrint('Error in clearing KYC data flow: $e');
-}
-          // Extract user_data
+          // Clear existing KYC data for new user login
+          try {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              try {
+                final kycBusinessDataProvider = Provider.of<KycBusinessDataProvider>(context, listen: false);
+                final kycImageProvider = Provider.of<KycImageProvider>(context, listen: false);
+                
+                kycBusinessDataProvider.clearKycData();
+                kycImageProvider.clearKycImage();
+                
+                debugPrint('Cleared existing KYC data for new user login');
+              } catch (e) {
+                debugPrint('Error clearing KYC data: $e. This is normal if providers are not initialized yet.');
+              }
+            });
+          } catch (e) {
+            debugPrint('Error in clearing KYC data flow: $e');
+          }
+
           final userData = responseData['user_data'];
           if (userData != null && userData is Map<String, dynamic>) {
             final int? cusId = userData['cus_id'] as int?;
 
             if (cusId != null) {
-              await prefs.setInt('cus_id', cusId); // Store cus_id
+              await prefs.setInt('cus_id', cusId);
               debugPrint('Stored cus_id: $cusId');
             }
 
@@ -148,7 +185,6 @@ try {
               ),
             );
 
-            // MODIFIED: Always navigate to KYC screen after successful OTP verification
             debugPrint('OTP verified successfully. Navigating to KYC screen.');
             Navigator.pushReplacement(
               context,
@@ -168,7 +204,6 @@ try {
             );
           }
         } else {
-          // OTP verification failed
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(responseData['error_msg'] ?? 'Invalid OTP. Please try again.',
@@ -176,14 +211,12 @@ try {
             ),
           );
 
-          // Clear the OTP field for retry
           otpController.clear();
           setState(() {
             isOtpFilled = false;
           });
         }
       } else {
-        // Handle non-200 status codes
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to verify OTP. Status Code: ${response.statusCode}',
@@ -192,36 +225,45 @@ try {
         );
       }
     } catch (e) {
-      // Handle network errors
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Network Error: $e. Please check your internet connection.',
               style: GoogleFonts.poppins()),
         ),
       );
-      debugPrint('Network/API Error: $e'); // Print error for debugging
+      debugPrint('Network/API Error: $e');
     } finally {
       setState(() {
-        _isVerifying = false; // End loading
+        _isVerifying = false;
       });
     }
   }
 
   Future<void> _resendOtp() async {
-    // Reuse the same logic from login screen to resend OTP
+    if (!canResend) return;
+
     try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      // Get values from SharedPreferences (same as login screen)
+      double? latitude = prefs.getDouble('latitude');
+      double? longitude = prefs.getDouble('longitude');
+      String? deviceId = prefs.getString('device_id');
+
       Uri url = Uri.parse(_verifyOtpApiUrl);
 
+      // Use type 1002 with app signature (same as login screen)
       Map<String, String> body = {
-        'cid': '23262954',
-        'type': '1002', // Login/Resend OTP type
-        'ln': '322334',
-        'lt': '233432',
-        'device_id': '122334',
+        'cid': '85788578',
+        'type': '1002', // Login/Resend OTP type (same as login screen)
+        'lt': latitude?.toString() ?? '',
+        'ln': longitude?.toString() ?? '',
+        'device_id': deviceId ?? '',
         'mobile': widget.phoneNumber,
+        'app_signature': _appSignature, // Use app signature from loaded value
       };
 
-      debugPrint("Resending OTP to ${widget.phoneNumber}");
+      debugPrint("RESEND OTP API BODY: $body");
 
       final response = await http.post(
         url,
@@ -231,30 +273,44 @@ try {
         body: body,
       ).timeout(const Duration(seconds: 10));
 
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> responseData = jsonDecode(response.body);
+      debugPrint("RESEND OTP STATUS: ${response.statusCode}");
+      debugPrint("RESEND OTP RESPONSE: ${response.body}");
 
-        if (responseData['error'] == false) {
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = jsonDecode(response.body);
+
+        if (data.containsKey('cus_id')) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('OTP resent successfully!',
-                  style: GoogleFonts.poppins()),
+              content: Text(
+                data['error_msg'] ?? 'OTP resent successfully!',
+                style: GoogleFonts.poppins(),
+              ),
             ),
           );
-          startTimer(); // Restart the timer
+          startTimer();
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(responseData['error_msg'] ?? 'Failed to resend OTP.',
-                  style: GoogleFonts.poppins()),
+              content: Text(
+                'Failed to resend OTP. Please try again.',
+                style: GoogleFonts.poppins(),
+              ),
             ),
           );
         }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Server error. Please try again.',
+                style: GoogleFonts.poppins()),
+          ),
+        );
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to resend OTP. Please try again.',
+          content: Text('Network error: $e',
               style: GoogleFonts.poppins()),
         ),
       );
@@ -265,6 +321,8 @@ try {
   void dispose() {
     _timer?.cancel();
     otpController.dispose();
+    SmsAutoFill().unregisterListener();
+    cancel();
     super.dispose();
   }
 
@@ -278,21 +336,19 @@ try {
     final Color gradientEndColor = isDarkMode ? Colors.black : const Color(0xffFFFFFF);
     final Color backButtonColor = isDarkMode ? Colors.white : Colors.black87;
     final Color textColor = isDarkMode ? Colors.white : Colors.black;
-    final Color otpFieldActiveColor = isDarkMode ? Colors.white : const Color(0xffEB7720); // Orange for light, white for dark
+    final Color otpFieldActiveColor = isDarkMode ? Colors.white : const Color(0xffEB7720);
     final Color otpFieldInactiveColor = isDarkMode ? Colors.grey[600]! : Colors.grey;
     final Color timerTextColor = isDarkMode ? Colors.grey[400]! : Colors.grey;
-    final Color orangeColor = const Color(0xffEB7720); // Orange color, remains constant
-    // Removed logoColor as it's no longer needed for tinting
-
+    final Color orangeColor = const Color(0xffEB7720);
 
     return Scaffold(
-      resizeToAvoidBottomInset: true, // Enable keyboard resize behavior
+      resizeToAvoidBottomInset: true,
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [gradientStartColor, gradientEndColor], // Apply theme colors
+            colors: [gradientStartColor, gradientEndColor],
           ),
         ),
         child: SafeArea(
@@ -307,7 +363,7 @@ try {
                     onPressed: () {
                       Navigator.pop(context);
                     },
-                    icon: Icon(Icons.arrow_back, color: backButtonColor), // Apply theme color
+                    icon: Icon(Icons.arrow_back, color: backButtonColor),
                   ),
                 ),
               ),
@@ -319,47 +375,44 @@ try {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      const SizedBox(height: 20), // Reduced spacing
+                      const SizedBox(height: 20),
                       Center(
                         child: Image.asset(
                           'assets/logo.png',
-                          height: 80, // Reduced from 100
-                          // Removed color property
+                          height: 80,
                         ),
                       ),
-                      const SizedBox(height: 40), // Reduced from 100
+                      const SizedBox(height: 40),
                       Center(
                         child: Text(
                           'OTP Verification',
                           style: GoogleFonts.poppins(
                               fontSize: 20,
                               fontWeight: FontWeight.bold,
-                              color: orangeColor), // Always orange
+                              color: orangeColor),
                         ),
                       ),
-                      const SizedBox(height: 30), // Reduced from 50
+                      const SizedBox(height: 30),
                       Center(
                         child: RichText(
                           textAlign: TextAlign.center,
                           text: TextSpan(
-                            style: GoogleFonts.poppins(fontSize: 14, color: textColor), // Apply theme color
+                            style: GoogleFonts.poppins(fontSize: 14, color: textColor),
                             children: [
                               TextSpan(
                                 text:
                                 'We sent an OTP (One Time Password) to your mobile number ',
-                                style: TextStyle(color: textColor), // Apply theme color
+                                style: TextStyle(color: textColor),
                               ),
-                              // Use widget.phoneNumber to display the number passed from LoginScreen
                               TextSpan(
                                 text: widget.phoneNumber,
-                                style: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: textColor), // Apply theme color
+                                style: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: textColor),
                               ),
                             ],
                           ),
                         ),
                       ),
                       const SizedBox(height: 20),
-                      // PinCodeTextField without autofillHints for compatibility
                       PinCodeTextField(
                         appContext: context,
                         length: 6,
@@ -374,36 +427,33 @@ try {
                         pinTheme: PinTheme(
                           shape: PinCodeFieldShape.underline,
                           fieldWidth: 30,
-                          activeColor: otpFieldActiveColor, // Apply theme color
-                          selectedColor: otpFieldActiveColor, // Apply theme color
-                          inactiveColor: otpFieldInactiveColor, // Apply theme color
-                          // Removed textStyle from PinTheme to fix the error
+                          activeColor: otpFieldActiveColor,
+                          selectedColor: otpFieldActiveColor,
+                          inactiveColor: otpFieldInactiveColor,
                         ),
-                        textStyle: GoogleFonts.poppins(color: textColor), // Apply textStyle directly to PinCodeTextField
-                        // autofillHints: const [AutofillHints.oneTimeCode], // This line is removed
+                        textStyle: GoogleFonts.poppins(color: textColor),
                       ),
                       const SizedBox(height: 10),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text("Didn't receive OTP?", style: GoogleFonts.poppins(fontSize: 13, color: textColor)), // Apply theme color
+                          Text("Didn't receive OTP?", style: GoogleFonts.poppins(fontSize: 13, color: textColor)),
                           canResend
                               ? GestureDetector(
-                            onTap: _resendOtp, // Call the resend OTP function
+                            onTap: _resendOtp,
                             child: Text(
                               'Resend now',
                               style: GoogleFonts.poppins(
-                                  color: orangeColor, // Always orange
+                                  color: orangeColor,
                                   fontWeight: FontWeight.bold),
                             ),
                           )
                               : Text(
                             '0:${_start.toString().padLeft(2, '0')}',
-                            style: GoogleFonts.poppins(color: timerTextColor), // Apply theme color
+                            style: GoogleFonts.poppins(color: timerTextColor),
                           ),
                         ],
                       ),
-                      // Add extra space to accommodate keyboard
                       SizedBox(height: MediaQuery.of(context).viewInsets.bottom > 0 ? 40 : 20),
                     ],
                   ),
@@ -416,12 +466,12 @@ try {
                   left: 24.0,
                   right: 24.0,
                   top: 16.0,
-                  bottom: MediaQuery.of(context).viewInsets.bottom > 0 ? 16.0 : 30.0, // Adaptive bottom padding
+                  bottom: MediaQuery.of(context).viewInsets.bottom > 0 ? 16.0 : 30.0,
                 ),
                 child: ElevatedButton(
                   onPressed: (isOtpFilled && !_isVerifying) ? _verifyOtp : null,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: orangeColor, // Always orange
+                    backgroundColor: orangeColor,
                     minimumSize: const Size(double.infinity, 50),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
