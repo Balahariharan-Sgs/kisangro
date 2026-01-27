@@ -12,7 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:kisangro/home/bottom.dart';
 import 'package:provider/provider.dart';
 import '../home/theme_mode_provider.dart';
-import 'package:sms_autofill/sms_autofill.dart'; // Added for OTP autofill
+import 'package:sms_autofill/sms_autofill.dart';
 
 class OtpScreen extends StatefulWidget {
   final String phoneNumber;
@@ -23,51 +23,135 @@ class OtpScreen extends StatefulWidget {
   State<OtpScreen> createState() => _OtpScreenState();
 }
 
-class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
-  TextEditingController otpController = TextEditingController();
+class _OtpScreenState extends State<OtpScreen> {
+  final TextEditingController otpController = TextEditingController();
   Timer? _timer;
   int _start = 30;
   bool canResend = false;
   bool isOtpFilled = false;
   bool _isVerifying = false;
   String _appSignature = '';
-  String? _otpCode;
+  bool _isDisposed = false;
+  StreamSubscription<String>? _smsSubscription;
 
   static const String _verifyOtpApiUrl = 'https://erpsmart.in/total/api/m_api/';
 
   @override
-  void codeUpdated() {
-    setState(() {
-      if (code != null && code!.length == 6) {
-        otpController.text = code!;
-        isOtpFilled = true;
-      }
-    });
-  }
-
-  @override
   void initState() {
     super.initState();
+    otpController.addListener(_onOtpChanged);
     startTimer();
-    _initAutoFill();
+    _initSmsAutofill();
     _loadAppSignature();
   }
 
-  Future<void> _initAutoFill() async {
-    await SmsAutoFill().listenForCode();
+  void _onOtpChanged() {
+    if (_isDisposed) return;
+    
+    setState(() {
+      isOtpFilled = otpController.text.length == 6;
+    });
   }
 
+  Future<void> _initSmsAutofill() async {
+    try {
+      debugPrint('Initializing SMS autofill...');
+      
+      // Get app signature first
+      final signature = await SmsAutoFill().getAppSignature;
+      debugPrint('App Signature: $signature');
+      
+      // Start listening for SMS
+      await SmsAutoFill().listenForCode();
+      debugPrint('SMS listening started');
+      
+      // Alternative approach: Subscribe to SMS code stream
+      _smsSubscription = SmsAutoFill().code.listen((code) {
+        debugPrint('Received SMS code: $code');
+        if (code != null && code.length == 6 && !_isDisposed && mounted) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!_isDisposed && mounted) {
+              setState(() {
+                otpController.text = code;
+                isOtpFilled = true;
+              });
+              debugPrint('Auto-filled OTP: $code');
+            }
+          });
+        }
+      });
+      
+      // Also try to get the code immediately if already available
+      final existingCode = await SmsAutoFill().getAppSignature.then((_) {
+        return SmsAutoFill().code;
+      });
+      
+      if (existingCode != null && existingCode.length == 6 && !_isDisposed && mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!_isDisposed && mounted) {
+            setState(() {
+              otpController.text = existingCode as String;
+              isOtpFilled = true;
+            });
+            debugPrint('Auto-filled existing OTP: $existingCode');
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('SMS Autofill initialization error: $e');
+      // Fallback: Try alternative method
+     // _tryAlternativeSmsMethod();
+    }
+  }
+
+  // void _tryAlternativeSmsMethod() {
+  //   try {
+  //     debugPrint('Trying alternative SMS method...');
+      
+  //     // Alternative 1: Direct code reading
+  //     SmsAutoFill().getAppSignature.then((signature) {
+  //       debugPrint('Alternative method - App Signature: $signature');
+        
+  //       // Try to get code using alternative approach
+  //       SmsAutoFill().code.then((code) {
+  //         if (code != null && code.length == 6 && !_isDisposed && mounted) {
+  //           WidgetsBinding.instance.addPostFrameCallback((_) {
+  //             if (!_isDisposed && mounted) {
+  //               setState(() {
+  //                 otpController.text = code;
+  //                 isOtpFilled = true;
+  //               });
+  //               debugPrint('Alternative method - Auto-filled OTP: $code');
+  //             }
+  //           });
+  //         }
+  //       });
+  //     });
+  //   } catch (e) {
+  //     debugPrint('Alternative SMS method also failed: $e');
+  //   }
+  // }
+
   Future<void> _loadAppSignature() async {
-    final signature = await _getLiveAppSignature();
-    setState(() {
-      _appSignature = signature;
-    });
-    debugPrint("OTP SCREEN LIVE APP SIGNATURE: $_appSignature");
+    if (_isDisposed) return;
+    
+    try {
+      final signature = await _getLiveAppSignature();
+      if (_isDisposed) return;
+      
+      setState(() {
+        _appSignature = signature;
+      });
+      debugPrint("OTP SCREEN LIVE APP SIGNATURE: $_appSignature");
+    } catch (e) {
+      debugPrint('Error loading app signature: $e');
+    }
   }
 
   Future<String> _getLiveAppSignature() async {
     try {
       final signature = await SmsAutoFill().getAppSignature;
+      debugPrint('Got app signature: $signature');
       return signature ?? '';
     } catch (e) {
       debugPrint('App signature error: $e');
@@ -76,6 +160,8 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
   }
 
   void startTimer() {
+    if (_isDisposed) return;
+    
     setState(() {
       _start = 30;
       canResend = false;
@@ -83,27 +169,40 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
 
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_isDisposed) {
+        timer.cancel();
+        return;
+      }
+      
       if (_start == 0) {
-        setState(() {
-          canResend = true;
-        });
+        if (!_isDisposed) {
+          setState(() {
+            canResend = true;
+          });
+        }
         timer.cancel();
       } else {
-        setState(() {
-          _start--;
-        });
+        if (!_isDisposed) {
+          setState(() {
+            _start--;
+          });
+        }
       }
     });
   }
 
   Future<void> _verifyOtp() async {
+    if (_isDisposed) return;
+    
     if (!isOtpFilled) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Please enter the complete OTP.',
-              style: GoogleFonts.poppins()),
-        ),
-      );
+      if (!_isDisposed && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Please enter the complete OTP.',
+                style: GoogleFonts.poppins()),
+          ),
+        );
+      }
       return;
     }
 
@@ -114,17 +213,15 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
     try {
       final prefs = await SharedPreferences.getInstance();
       
-      // Get values from SharedPreferences (same as login screen)
       double? latitude = prefs.getDouble('latitude');
       double? longitude = prefs.getDouble('longitude');
       String? deviceId = prefs.getString('device_id');
 
       Uri url = Uri.parse(_verifyOtpApiUrl);
 
-      // Construct the body with values from SharedPreferences
       Map<String, String> body = {
         'cid': '85788578',
-        'type': '1004', // OTP verification type
+        'type': '1004',
         'ln': longitude?.toString() ?? '',
         'lt': latitude?.toString() ?? '',
         'device_id': deviceId ?? '',
@@ -142,6 +239,8 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
         body: body,
       ).timeout(const Duration(seconds: 10));
 
+      if (_isDisposed) return;
+
       if (response.statusCode == 200) {
         final Map<String, dynamic> responseData = jsonDecode(response.body);
         debugPrint('OTP Verification API Response: $responseData');
@@ -150,17 +249,18 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setBool('isLoggedIn', true);
 
-          // Clear existing KYC data for new user login
           try {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               try {
-                final kycBusinessDataProvider = Provider.of<KycBusinessDataProvider>(context, listen: false);
-                final kycImageProvider = Provider.of<KycImageProvider>(context, listen: false);
-                
-                kycBusinessDataProvider.clearKycData();
-                kycImageProvider.clearKycImage();
-                
-                debugPrint('Cleared existing KYC data for new user login');
+                if (!_isDisposed && mounted) {
+                  final kycBusinessDataProvider = Provider.of<KycBusinessDataProvider>(context, listen: false);
+                  final kycImageProvider = Provider.of<KycImageProvider>(context, listen: false);
+                  
+                  kycBusinessDataProvider.clearKycData();
+                  kycImageProvider.clearKycImage();
+                  
+                  debugPrint('Cleared existing KYC data for new user login');
+                }
               } catch (e) {
                 debugPrint('Error clearing KYC data: $e. This is normal if providers are not initialized yet.');
               }
@@ -178,89 +278,101 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
               debugPrint('Stored cus_id: $cusId');
             }
 
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(responseData['error_msg'] ?? 'OTP verified successfully!',
-                    style: GoogleFonts.poppins()),
-              ),
-            );
+            if (!_isDisposed && mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(responseData['error_msg'] ?? 'OTP verified successfully!',
+                      style: GoogleFonts.poppins()),
+                ),
+              );
 
-            debugPrint('OTP verified successfully. Navigating to KYC screen.');
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => kyc()),
-            );
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (context) => kyc()),
+              );
+            }
           } else {
-            debugPrint('User data not found or invalid in API response. Navigating to KYC screen.');
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('User data missing. Proceeding to KYC.',
-                    style: GoogleFonts.poppins()),
-              ),
-            );
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => kyc()),
-            );
+            debugPrint('User data not found or invalid in API response.');
+            if (!_isDisposed && mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('User data missing. Proceeding to KYC.',
+                      style: GoogleFonts.poppins()),
+                ),
+              );
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (context) => kyc()),
+              );
+            }
           }
         } else {
+          if (!_isDisposed && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(responseData['error_msg'] ?? 'Invalid OTP. Please try again.',
+                    style: GoogleFonts.poppins()),
+              ),
+            );
+          }
+
+          otpController.clear();
+          if (!_isDisposed) {
+            setState(() {
+              isOtpFilled = false;
+            });
+          }
+        }
+      } else {
+        if (!_isDisposed && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(responseData['error_msg'] ?? 'Invalid OTP. Please try again.',
+              content: Text('Failed to verify OTP. Status Code: ${response.statusCode}',
                   style: GoogleFonts.poppins()),
             ),
           );
-
-          otpController.clear();
-          setState(() {
-            isOtpFilled = false;
-          });
         }
-      } else {
+      }
+    } catch (e) {
+      if (!_isDisposed && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to verify OTP. Status Code: ${response.statusCode}',
+            content: Text('Network Error: $e. Please check your internet connection.',
                 style: GoogleFonts.poppins()),
           ),
         );
       }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Network Error: $e. Please check your internet connection.',
-              style: GoogleFonts.poppins()),
-        ),
-      );
       debugPrint('Network/API Error: $e');
     } finally {
-      setState(() {
-        _isVerifying = false;
-      });
+      if (!_isDisposed) {
+        setState(() {
+          _isVerifying = false;
+        });
+      }
     }
   }
 
   Future<void> _resendOtp() async {
+    if (_isDisposed) return;
     if (!canResend) return;
 
     try {
       final prefs = await SharedPreferences.getInstance();
       
-      // Get values from SharedPreferences (same as login screen)
       double? latitude = prefs.getDouble('latitude');
       double? longitude = prefs.getDouble('longitude');
       String? deviceId = prefs.getString('device_id');
 
       Uri url = Uri.parse(_verifyOtpApiUrl);
 
-      // Use type 1002 with app signature (same as login screen)
       Map<String, String> body = {
         'cid': '85788578',
-        'type': '1002', // Login/Resend OTP type (same as login screen)
+        'type': '1002',
         'lt': latitude?.toString() ?? '',
         'ln': longitude?.toString() ?? '',
         'device_id': deviceId ?? '',
         'mobile': widget.phoneNumber,
-        'app_signature': _appSignature, // Use app signature from loaded value
+        'app_signature': _appSignature,
       };
 
       debugPrint("RESEND OTP API BODY: $body");
@@ -273,6 +385,8 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
         body: body,
       ).timeout(const Duration(seconds: 10));
 
+      if (_isDisposed) return;
+
       debugPrint("RESEND OTP STATUS: ${response.statusCode}");
       debugPrint("RESEND OTP RESPONSE: ${response.body}");
 
@@ -280,49 +394,65 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
         final Map<String, dynamic> data = jsonDecode(response.body);
 
         if (data.containsKey('cus_id')) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                data['error_msg'] ?? 'OTP resent successfully!',
-                style: GoogleFonts.poppins(),
+          if (!_isDisposed && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  data['error_msg'] ?? 'OTP resent successfully!',
+                  style: GoogleFonts.poppins(),
+                ),
               ),
-            ),
-          );
+            );
+          }
           startTimer();
         } else {
+          if (!_isDisposed && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Failed to resend OTP. Please try again.',
+                  style: GoogleFonts.poppins(),
+                ),
+              ),
+            );
+          }
+        }
+      } else {
+        if (!_isDisposed && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(
-                'Failed to resend OTP. Please try again.',
-                style: GoogleFonts.poppins(),
-              ),
+              content: Text('Server error. Please try again.',
+                  style: GoogleFonts.poppins()),
             ),
           );
         }
-      } else {
+      }
+    } catch (e) {
+      if (!_isDisposed && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Server error. Please try again.',
+            content: Text('Network error: $e',
                 style: GoogleFonts.poppins()),
           ),
         );
       }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Network error: $e',
-              style: GoogleFonts.poppins()),
-        ),
-      );
     }
   }
 
   @override
   void dispose() {
+    _isDisposed = true;
     _timer?.cancel();
+    _smsSubscription?.cancel();
+    otpController.removeListener(_onOtpChanged);
     otpController.dispose();
-    SmsAutoFill().unregisterListener();
-    cancel();
+    
+    try {
+      SmsAutoFill().unregisterListener();
+    } catch (e) {
+      debugPrint('Error during SMS autofill dispose: $e');
+    }
+    
     super.dispose();
   }
 
@@ -331,7 +461,6 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
     final themeMode = Provider.of<ThemeModeProvider>(context).themeMode;
     final isDarkMode = themeMode == ThemeMode.dark;
 
-    // Define colors based on theme
     final Color gradientStartColor = isDarkMode ? Colors.black : const Color(0xffFFD9BD);
     final Color gradientEndColor = isDarkMode ? Colors.black : const Color(0xffFFFFFF);
     final Color backButtonColor = isDarkMode ? Colors.white : Colors.black87;
@@ -354,7 +483,6 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
         child: SafeArea(
           child: Column(
             children: [
-              // Back button section
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                 child: Align(
@@ -368,7 +496,6 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
                 ),
               ),
 
-              // Scrollable content
               Expanded(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -413,11 +540,13 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
                         ),
                       ),
                       const SizedBox(height: 20),
+                      // Using PinCodeTextField with autofill
                       PinCodeTextField(
                         appContext: context,
                         length: 6,
                         controller: otpController,
                         onChanged: (value) {
+                          if (_isDisposed) return;
                           setState(() {
                             isOtpFilled = value.length == 6;
                           });
@@ -432,6 +561,11 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
                           inactiveColor: otpFieldInactiveColor,
                         ),
                         textStyle: GoogleFonts.poppins(color: textColor),
+                        // Enable autofill for SMS
+                        autoFocus: true,
+                        enableActiveFill: false,
+                        // Add SMS autofill capability
+                        autoDisposeControllers: false,
                       ),
                       const SizedBox(height: 10),
                       Row(
@@ -460,7 +594,6 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
                 ),
               ),
 
-              // Bottom button section
               Container(
                 padding: EdgeInsets.only(
                   left: 24.0,
