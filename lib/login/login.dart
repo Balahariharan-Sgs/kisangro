@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl_phone_field/intl_phone_field.dart';
@@ -38,158 +40,217 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
   bool isValidNumber = false;
   bool _isLoading = false;
   String _appSignature = '';
-
+  late SharedPreferences _prefs;
+  bool _prefsLoaded = false;
 
   static const String _loginApiUrl = 'https://erpsmart.in/total/api/m_api/';
 
-@override
-void initState() {
-  super.initState();
-  _loadAppSignature();
-}
+  @override
+  void initState() {
+    super.initState();
+    _initializePrefs();
+  }
 
-Future<void> _loadAppSignature() async {
-  final signature = await _getLiveAppSignature();
-  setState(() {
-    _appSignature = signature;
-  });
+  Future<void> _initializePrefs() async {
+    try {
+      _prefs = await SharedPreferences.getInstance();
+      await _loadAppSignature();
+      setState(() {
+        _prefsLoaded = true;
+      });
+    } catch (e) {
+      debugPrint('Prefs initialization error: $e');
+      // Initialize with empty prefs to prevent crashes
+      _prefs = await SharedPreferences.getInstance();
+      setState(() {
+        _prefsLoaded = true;
+      });
+    }
+  }
 
-  debugPrint("LIVE APP SIGNATURE: $_appSignature");
-}
-
+  Future<void> _loadAppSignature() async {
+    try {
+      final signature = await _getLiveAppSignature();
+      setState(() {
+        _appSignature = signature;
+      });
+      debugPrint("LIVE APP SIGNATURE: $_appSignature");
+    } catch (e) {
+      debugPrint('App signature error: $e');
+      setState(() {
+        _appSignature = '';
+      });
+    }
+  }
 
   Future<String> _getLiveAppSignature() async {
-  try {
-    final signature = await SmsAutoFill().getAppSignature;
-    return signature ?? '';
-  } catch (e) {
-    debugPrint('App signature error: $e');
-    return '';
-  }
-}
-
-  
-  // Check if user is registered before sending OTP - only check for cus_id
-
-
-
- Future<void> _sendOtp() async {
-  if (!isChecked || !isValidNumber) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Please accept terms and enter a valid 10-digit mobile number.',
-          style: GoogleFonts.poppins(),
-        ),
-      ),
-    );
-    return;
+    try {
+      final signature = await SmsAutoFill().getAppSignature;
+      return signature ?? '';
+    } catch (e) {
+      debugPrint('App signature error: $e');
+      return '';
+    }
   }
 
-  setState(() {
-    _isLoading = true;
-  });
-
-  try {
-    final prefs = await SharedPreferences.getInstance();
-
-    double? latitude = prefs.getDouble('latitude');
-    double? longitude = prefs.getDouble('longitude');
-    String? deviceId = prefs.getString('device_id');
-
-    Uri url = Uri.parse(_loginApiUrl);
-
-    Map<String, String> body = {
-      'cid': '85788578',
-      'type': '1002',
-      'lt': latitude?.toString() ?? '',
-      'ln': longitude?.toString() ?? '',
-      'device_id': deviceId ?? '',
-      'mobile': _enteredPhoneNumber,
-      'app_signature': _appSignature,
-   
-    };
-
-    debugPrint("LOGIN API BODY: $body");
-
-    final response = await http.post(
-      url,
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: body,
-    ).timeout(const Duration(seconds: 10));
-
-    debugPrint("STATUS: ${response.statusCode}");
-    debugPrint("RESPONSE: ${response.body}");
-
-    if (response.statusCode == 200) {
-      final Map<String, dynamic> data = jsonDecode(response.body);
-
-      /// ✅ REGISTERED USER
-      if (data.containsKey('cus_id')) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              data['error_msg'] ?? 'OTP sent successfully',
-              style: GoogleFonts.poppins(),
-            ),
-          ),
-        );
-
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => OtpScreen(phoneNumber: _enteredPhoneNumber),
-          ),
-        );
-      }
-
-      /// ❌ NOT REGISTERED USER
-      else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Mobile number not registered. Please create an account.',
-              style: GoogleFonts.poppins(),
-            ),
-            backgroundColor: const Color(0xffEB7720),
-          ),
-        );
-
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => const RegistrationScreen(),
-          ),
-        );
-      }
-    } else {
+  Future<void> _sendOtp() async {
+    if (!isChecked || !isValidNumber) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Server error. Please try again.',
+            'Please accept terms and enter a valid 10-digit mobile number.',
             style: GoogleFonts.poppins(),
           ),
         ),
       );
+      return;
     }
-  } catch (e) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Network error: $e',
-          style: GoogleFonts.poppins(),
-        ),
-      ),
-    );
-  } finally {
-    setState(() {
-      _isLoading = false;
-    });
-  }
-}
 
+    if (!_prefsLoaded) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Initializing app... Please wait.',
+            style: GoogleFonts.poppins(),
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      double? latitude = _prefs.getDouble('latitude');
+      double? longitude = _prefs.getDouble('longitude');
+      String? deviceId = _prefs.getString('device_id');
+
+      Uri url = Uri.parse(_loginApiUrl);
+
+      Map<String, String> body = {
+        'cid': '85788578',
+        'type': '1002',
+        'lt': latitude?.toString() ?? '',
+        'ln': longitude?.toString() ?? '',
+        'device_id': deviceId ?? '',
+        'mobile': _enteredPhoneNumber,
+        'app_signature': _appSignature,
+      };
+
+      debugPrint("LOGIN API BODY: $body");
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: body,
+      ).timeout(const Duration(seconds: 30)); // Increased timeout for slower devices
+
+      debugPrint("STATUS: ${response.statusCode}");
+      debugPrint("RESPONSE: ${response.body}");
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = jsonDecode(response.body);
+
+        /// ✅ REGISTERED USER
+        if (data.containsKey('cus_id')) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                data['error_msg'] ?? 'OTP sent successfully',
+                style: GoogleFonts.poppins(),
+              ),
+            ),
+          );
+
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => OtpScreen(phoneNumber: _enteredPhoneNumber),
+            ),
+          );
+        }
+
+        /// ❌ NOT REGISTERED USER
+        else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Mobile number not registered. Please create an account.',
+                style: GoogleFonts.poppins(),
+              ),
+              backgroundColor: const Color(0xffEB7720),
+            ),
+          );
+
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const RegistrationScreen(),
+            ),
+          );
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Server error (${response.statusCode}). Please try again.',
+              style: GoogleFonts.poppins(),
+            ),
+          ),
+        );
+      }
+    } on http.ClientException catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Network connection error. Please check your internet.',
+            style: GoogleFonts.poppins(),
+          ),
+        ),
+      );
+      debugPrint('ClientException: $e');
+    }
+
+     on TimeoutException catch (e) {
+       ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Request timeout. Please try again.',
+            style: GoogleFonts.poppins(),
+          ),
+        ),
+      );
+      debugPrint('TimeoutException: $e');
+    } on FormatException catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Invalid server response. Please try again.',
+            style: GoogleFonts.poppins(),
+          ),
+        ),
+      );
+      debugPrint('FormatException: $e');
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'An error occurred: $e',
+            style: GoogleFonts.poppins(),
+          ),
+        ),
+      );
+      debugPrint('General error: $e');
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
 
   void _navigateToRegistration() {
     Navigator.push(
@@ -208,10 +269,10 @@ Future<void> _loadAppSignature() async {
     final Color gradientEndColor = isDarkMode ? Colors.black : const Color(0xffFFFFFF);
     final Color textColor = isDarkMode ? Colors.white : Colors.black;
     final Color hintColor = isDarkMode ? Colors.grey[400]! : Colors.black;
-    final Color inputBorderColor = isDarkMode ? Colors.white : const Color(0xffEB7720); // Orange for light, white for dark
-    final Color checkboxActiveColor = isDarkMode ? Colors.white : const Color(0xffEB7720); // Orange for light, white for dark
+    final Color inputBorderColor = isDarkMode ? Colors.white : const Color(0xffEB7720);
+    final Color checkboxActiveColor = isDarkMode ? Colors.white : const Color(0xffEB7720);
     final Color checkboxUncheckedColor = isDarkMode ? Colors.grey[400]! : Colors.black;
-    final Color orangeColor = const Color(0xffEB7720); // Orange color, remains constant
+    final Color orangeColor = const Color(0xffEB7720);
 
     return PopScope(
       canPop: false,
@@ -220,11 +281,12 @@ Future<void> _loadAppSignature() async {
           return;
         }
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Please complete the login process to proceed.', style: GoogleFonts.poppins())),
+          SnackBar(
+            content: Text('Please complete the login process to proceed.', style: GoogleFonts.poppins())),
         );
       },
       child: Scaffold(
-        backgroundColor: Colors.transparent, // Set to transparent to show gradient
+        backgroundColor: Colors.transparent,
         resizeToAvoidBottomInset: true,
         body: Container(
           width: double.infinity,
@@ -234,8 +296,8 @@ Future<void> _loadAppSignature() async {
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [
-                gradientStartColor, // Apply theme color
-                gradientEndColor, // Apply theme color
+                gradientStartColor,
+                gradientEndColor,
               ],
             ),
           ),
@@ -250,7 +312,7 @@ Future<void> _loadAppSignature() async {
                       children: [
                         const SizedBox(height: 20),
                         Center(
-                          child: Image.asset("assets/logo.png", height: 80), // Removed color property
+                          child: Image.asset("assets/logo.png", height: 80),
                         ),
                         const SizedBox(height: 20),
                         Text(
@@ -258,14 +320,14 @@ Future<void> _loadAppSignature() async {
                           style: GoogleFonts.poppins(
                             fontSize: 22,
                             fontWeight: FontWeight.w600,
-                            color: orangeColor, // Always orange
+                            color: orangeColor,
                           ),
                         ),
                         const SizedBox(height: 20),
                         Text(
                           'OTP (One Time Password) will be sent to this number',
                           textAlign: TextAlign.center,
-                          style: GoogleFonts.poppins(fontSize: 13, color: textColor), // Apply theme color
+                          style: GoogleFonts.poppins(fontSize: 13, color: textColor),
                         ),
                         const SizedBox(height: 20),
 
@@ -273,20 +335,20 @@ Future<void> _loadAppSignature() async {
                           decoration: InputDecoration(
                             enabledBorder: OutlineInputBorder(
                               borderSide: BorderSide(
-                                color: inputBorderColor, // Apply theme color
+                                color: inputBorderColor,
                                 width: 2.0,
                               ),
                               borderRadius: const BorderRadius.all(Radius.circular(8)),
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderSide: BorderSide(
-                                color: inputBorderColor, // Apply theme color
+                                color: inputBorderColor,
                                 width: 2.0,
                               ),
                               borderRadius: const BorderRadius.all(Radius.circular(8)),
                             ),
                             labelText: 'Enter mobile number',
-                            labelStyle: GoogleFonts.poppins(color: hintColor), // Apply theme color
+                            labelStyle: GoogleFonts.poppins(color: hintColor),
                             border: const OutlineInputBorder(
                               borderRadius: BorderRadius.all(Radius.circular(8)),
                             ),
@@ -296,7 +358,7 @@ Future<void> _loadAppSignature() async {
                           inputFormatters: [
                             FilteringTextInputFormatter.digitsOnly,
                           ],
-                          style: GoogleFonts.poppins(color: textColor), // Apply theme color to input text
+                          style: GoogleFonts.poppins(color: textColor),
                           onChanged: (phone) {
                             setState(() {
                               _enteredPhoneNumber = phone.number;
@@ -307,14 +369,14 @@ Future<void> _loadAppSignature() async {
 
                         const SizedBox(height: 10),
                         Row(
-                          mainAxisAlignment: MainAxisAlignment.center, // Added this line
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Text( // Removed Expanded
+                            Text(
                               "Don't worry your details are safe with us.",
-                              style: GoogleFonts.poppins(fontSize: 13, color: textColor), // Apply theme color
+                              style: GoogleFonts.poppins(fontSize: 13, color: textColor),
                             ),
                             const SizedBox(width: 5),
-                            Icon(Icons.verified, color: orangeColor), // Always orange
+                            Icon(Icons.verified, color: orangeColor),
                           ],
                         ),
                         const SizedBox(height: 20),
@@ -324,9 +386,9 @@ Future<void> _loadAppSignature() async {
                           children: [
                             Checkbox(
                               value: isChecked,
-                              activeColor: checkboxActiveColor, // Apply theme color
-                              checkColor: isDarkMode ? Colors.black : Colors.white, // Checkmark color
-                              side: BorderSide(color: checkboxUncheckedColor), // Apply theme color
+                              activeColor: checkboxActiveColor,
+                              checkColor: isDarkMode ? Colors.black : Colors.white,
+                              side: BorderSide(color: checkboxUncheckedColor),
                               onChanged: (value) {
                                 setState(() {
                                   isChecked = value!;
@@ -338,22 +400,21 @@ Future<void> _loadAppSignature() async {
                                 TextSpan(
                                   text: 'I accept the ',
                                   style: GoogleFonts.poppins(
-                                    color: textColor, // Apply theme color
+                                    color: textColor,
                                     fontSize: 13,
                                   ),
                                   children: [
                                     TextSpan(
                                       text: 'Terms & Conditions',
                                       style: GoogleFonts.poppins(
-                                        color: orangeColor, // Always orange
+                                        color: orangeColor,
                                         fontWeight: FontWeight.w500,
                                       ),
-                                      // You can add onTap functionality here if needed
                                     ),
                                     TextSpan(
                                       text: ' of Aura.',
                                       style: GoogleFonts.poppins(
-                                        color: textColor, // Apply theme color
+                                        color: textColor,
                                       ),
                                     ),
                                   ],
@@ -380,25 +441,29 @@ Future<void> _loadAppSignature() async {
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
-                          onPressed: (isChecked && isValidNumber && !_isLoading)
-                              ? _sendOtp
-                              : null,
+                          onPressed: (!_prefsLoaded || _isLoading || !isChecked || !isValidNumber)
+                              ? null
+                              : _sendOtp,
                           style: ElevatedButton.styleFrom(
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            backgroundColor: orangeColor, // Always orange
+                            backgroundColor: orangeColor,
                             padding: const EdgeInsets.symmetric(vertical: 14),
                           ),
                           child: _isLoading
-                              ? const CircularProgressIndicator(color: Colors.white)
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(color: Colors.white),
+                                )
                               : Text(
-                            'Send OTP',
-                            style: GoogleFonts.poppins(
-                              fontSize: 16,
-                              color: Colors.white,
-                            ),
-                          ),
+                                  'Send OTP',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 16,
+                                    color: Colors.white,
+                                  ),
+                                ),
                         ),
                       ),
                       const SizedBox(height: 10),

@@ -31,17 +31,23 @@ Future<bool> updateAddress({
   required String pincode,
   required String cusId,
 }) async {
-  final url = Uri.parse('https://sgserp.in/erp/api/m_api/');
+  final url = Uri.parse('https://erpsmart.in/total/api/m_api/');
 
   try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      double? latitude = prefs.getDouble('latitude');
+      double? longitude = prefs.getDouble('longitude');
+      String? deviceId = prefs.getString('device_id');
+
     final response = await http.post(
       url,
       body: {
-        'cid': '23262954',
-        'type': '2015',
-        'ln': '322334',
-        'lt': '233432',
-        'device_id': '122334',
+        'cid': '85788578',
+        'type': '1007',
+         'ln': longitude?.toString() ?? '',
+        'lt': latitude?.toString() ?? '',
+        'device_id': deviceId ?? '',
         'cus_id': cusId,
         'address': address,
         'name': name,
@@ -90,17 +96,23 @@ Future<bool> updateAddress({
 
 // API to fetch saved addresses
 Future<List<Map<String, dynamic>>> fetchAddresses(String cusId) async {
-  final url = Uri.parse('https://sgserp.in/erp/api/m_api/');
+  final url = Uri.parse('https://erpsmart.in/total/api/m_api/');
 
-  try {
+ try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      double? latitude = prefs.getDouble('latitude');
+      double? longitude = prefs.getDouble('longitude');
+      String? deviceId = prefs.getString('device_id');
+
     final response = await http.post(
       url,
       body: {
-        'cid': '23262954',
-        'type': '1010',
-        'ln': '322334',
-        'lt': '233432',
-        'device_id': '122334',
+        'cid': '85788578',
+        'type': '1008',
+        'ln': longitude?.toString() ?? '',
+        'lt': latitude?.toString() ?? '',
+        'device_id': deviceId ?? '',
         'cus_id': cusId,
       },
     );

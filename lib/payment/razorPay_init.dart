@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:kisangro/payment/payment3.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/address_model.dart';
 
@@ -90,15 +91,24 @@ class _RazorpayPageState extends State<RazorpayPage> {
     required double amount,
     required String status,
   }) async {
-    const String apiUrl = 'https://sgserp.in/erp/api/m_api/';
+    const String apiUrl = 'https://erpsmart.in/total/api/m_api/';
 
     // Prepare the request parameters
-    final Map<String, String> requestBody = {
-      'cid': '23262954',
-      'device_id': '1234',
-      'lt': '23',
-      'ln': '2324',
-      'type': '1012',
+    
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      double? latitude = prefs.getDouble('latitude');
+      double? longitude = prefs.getDouble('longitude');
+      String? deviceId = prefs.getString('device_id');
+
+      final Map<String, String> requestBody = {
+      'cid': '85788578',
+     'ln': longitude?.toString() ?? '',
+        'lt': latitude?.toString() ?? '',
+        'device_id': deviceId ?? '',
+      'type': '1009',
       'cus_id': '287',
       'payment_id': paymentId,
       'order_id': orderId,
@@ -106,8 +116,6 @@ class _RazorpayPageState extends State<RazorpayPage> {
       'status': status,
       'payment_method': widget.paymentMethod,
     };
-
-    try {
       final response = await http.post(
         Uri.parse(apiUrl),
         headers: {

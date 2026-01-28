@@ -52,8 +52,8 @@ class _kycState extends State<kyc> {
   bool _isKycOptionalFlow = false;
 
   static const int maxChars = 100;
-  static const String _apiUrl = 'https://sgserp.in/erp/api/m_api/';
-  static const String _cid = '23262954';
+  static const String _apiUrl = 'https://erpsmart.in/total/api/m_api/';
+  static const String _cid = '85788578';
 
   @override
   void initState() {
@@ -284,7 +284,7 @@ class _kycState extends State<kyc> {
       final response = await _callApiWithRetry(
         body: {
           'cid': _cid,
-          'type': '1024',
+          'type': '1005',
           'lt': latitude?.toString() ?? '',
           'ln': longitude?.toString() ?? '',
           'device_id': deviceId ?? '',

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl_phone_field/intl_phone_field.dart';
@@ -9,7 +11,6 @@ import 'package:confetti/confetti.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
-
 
 class RegistrationScreen extends StatefulWidget {
   const RegistrationScreen({super.key});
@@ -37,6 +38,8 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   bool _showHumanVerification = true;
   bool _showCaptchaSection = false;
   bool _showSecurityBox = true;
+  late SharedPreferences _prefs;
+  bool _prefsLoaded = false;
 
   static const String _apiUrl = 'https://erpsmart.in/total/api/m_api/';
 
@@ -45,6 +48,22 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     super.initState();
     _confettiController = ConfettiController(duration: const Duration(seconds: 2));
     _generateCaptcha();
+    _initializePrefs();
+  }
+
+  Future<void> _initializePrefs() async {
+    try {
+      _prefs = await SharedPreferences.getInstance();
+      setState(() {
+        _prefsLoaded = true;
+      });
+    } catch (e) {
+      debugPrint('Prefs initialization error: $e');
+      _prefs = await SharedPreferences.getInstance();
+      setState(() {
+        _prefsLoaded = true;
+      });
+    }
   }
 
   @override
@@ -132,6 +151,15 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   }
 
   Future<void> _handleRegistration() async {
+    if (!_prefsLoaded) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Initializing app... Please wait.', style: GoogleFonts.poppins()),
+        ),
+      );
+      return;
+    }
+
     if (!_isHumanVerified) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -194,24 +222,20 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     try {
       Uri url = Uri.parse(_apiUrl);
 
-final prefs = await SharedPreferences.getInstance();
+      double? latitude = _prefs.getDouble('latitude');
+      double? longitude = _prefs.getDouble('longitude');
+      String? deviceId = _prefs.getString('device_id');
 
-double? latitude = prefs.getDouble('latitude');
-double? longitude = prefs.getDouble('longitude');
-String? deviceId = prefs.getString('device_id');
-
-Map<String, String> body = {
-  'cid': '85788578',
-  'ln': longitude?.toString() ?? '',
-  'lt': latitude?.toString() ?? '',
-  'device_id': deviceId ?? '',
-  'name': _nameController.text,
-  'mobile': _enteredPhoneNumber,
-  'email': _emailController.text,
-  'type': '1003',
-};
-
-      
+      Map<String, String> body = {
+        'cid': '85788578',
+        'ln': longitude?.toString() ?? '',
+        'lt': latitude?.toString() ?? '',
+        'device_id': deviceId ?? '',
+        'name': _nameController.text,
+        'mobile': _enteredPhoneNumber,
+        'email': _emailController.text,
+        'type': '1003',
+      };
 
       debugPrint("Registration API URL: $url");
       debugPrint("Registration Request Body: $body");
@@ -222,10 +246,9 @@ Map<String, String> body = {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: body,
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(const Duration(seconds: 30)); // Increased timeout
 
       debugPrint('Registration Response Status Code: ${response.statusCode}');
-      debugPrint('Registration Raw Response Body: ${response.body}');
 
       if (response.statusCode == 200) {
         String? contentType = response.headers['content-type'];
@@ -246,27 +269,39 @@ Map<String, String> body = {
               Navigator.pop(context);
             } else {
               // Registration failed or user already exists
+              String errorMessage = responseData['message'] ?? 
+                                  responseData['error_msg'] ?? 
+                                  'Registration failed. Please try again.';
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text(responseData['message'] ?? 'Registration failed. Please try again.', style: GoogleFonts.poppins()),
+                  content: Text(errorMessage, style: GoogleFonts.poppins()),
                 ),
               );
             }
           } on FormatException catch (e) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Server returned an unexpected response format. Please try again. Error: $e', style: GoogleFonts.poppins()),
-              ),
-            );
             debugPrint('FormatException: $e. Raw response: ${response.body}');
+            // Try to extract error message even if not valid JSON
+            if (response.body.contains('error') || response.body.contains('Error')) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Registration error: ${response.body.substring(0, 100)}', style: GoogleFonts.poppins()),
+                ),
+              );
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Server returned unexpected response. Please try again.', style: GoogleFonts.poppins()),
+                ),
+              );
+            }
           }
         } else {
+          debugPrint('Non-JSON response. Content-Type: $contentType, Raw response: ${response.body}');
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Server returned an unexpected response (not JSON). Please try again.', style: GoogleFonts.poppins()),
+              content: Text('Server returned unexpected response. Please try again.', style: GoogleFonts.poppins()),
             ),
           );
-          debugPrint('Non-JSON response. Content-Type: $contentType, Raw response: ${response.body}');
         }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -275,13 +310,27 @@ Map<String, String> body = {
           ),
         );
       }
-    } catch (e) {
+    } on http.ClientException catch (e) {
+      debugPrint('ClientException: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Network Error: $e. Please check your internet connection.', style: GoogleFonts.poppins()),
+          content: Text('Network connection error. Please check your internet.', style: GoogleFonts.poppins()),
         ),
       );
+    } on TimeoutException catch (e) {
+      debugPrint('TimeoutException: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Request timeout. Please try again.', style: GoogleFonts.poppins()),
+        ),
+      );
+    } catch (e) {
       debugPrint('Network/API Error: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('An error occurred: ${e.toString()}', style: GoogleFonts.poppins()),
+        ),
+      );
     } finally {
       setState(() {
         _isLoading = false;
@@ -825,7 +874,9 @@ Map<String, String> body = {
                     child: SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
-                        onPressed: _isHumanVerified && _isCaptchaVerified && !_isLoading ? _handleRegistration : null,
+                        onPressed: (!_prefsLoaded || _isLoading || !_isHumanVerified || !_isCaptchaVerified) 
+                            ? null 
+                            : _handleRegistration,
                         style: ElevatedButton.styleFrom(
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(6),
