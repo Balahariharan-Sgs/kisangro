@@ -253,19 +253,24 @@ class _licence4State extends State<licence4> {
     required File photoFile,
     required String expireDate,
   }) async {
-    const String apiUrl = 'https://sgserp.in/erp/api/m_api/';
+    const String apiUrl = 'https://erpsmart.in/total/api/m_api/';
 
-    try {
+   try {
+      final prefs = await SharedPreferences.getInstance();
+
+      double? latitude = prefs.getDouble('latitude');
+      double? longitude = prefs.getDouble('longitude');
+      String? deviceId = prefs.getString('device_id');
       final request = http.MultipartRequest('POST', Uri.parse(apiUrl));
 
       // Add fields for pesticide API (type: 1045)
       request.fields.addAll({
         'cid': cid,
         'cus_id': cusId,
-        'type': '1045', // Pesticide license type
-        'ln': ln,
-        'lt': lt,
-        'device_id': deviceId,
+        'type': '1011', // Pesticide license type
+         'lt': latitude?.toString() ?? '',
+          'ln': longitude?.toString() ?? '',
+          'device_id': deviceId ?? '',
         'pl_no': plNo,
         'expire_date': expireDate,
       });
@@ -338,7 +343,7 @@ class _licence4State extends State<licence4> {
       request.fields.addAll({
         'cid': cid,
         'cus_id': cusId,
-        'type': '1020', // Fertilizer license type
+        'type': '1012', // Fertilizer license type
         'ln': ln,
         'lt': lt,
         'device_id': deviceId,
@@ -1148,6 +1153,12 @@ class _licence4State extends State<licence4> {
       return;
     }
 
+    // Retrieve location and device data from SharedPreferences
+    final prefs = await SharedPreferences.getInstance();
+    final double? latitude = prefs.getDouble('latitude');
+    final double? longitude = prefs.getDouble('longitude');
+    final String? deviceId = prefs.getString('device_id');
+
     bool pesticideSuccess = true;
     bool fertilizerSuccess = true;
 
@@ -1158,11 +1169,11 @@ class _licence4State extends State<licence4> {
         final String expireDate = _insecticideNoExpiry ? 'Permanent' : DateFormat('yyyy-MM-dd').format(_insecticideExpirationDate!);
 
         pesticideSuccess = await _uploadPesticideLicense(
-          cid: "23262954",
+          cid: "85788578",
           cusId: _actualCustomerId!, // Use actual customer ID
-          ln: "12",
-          lt: "123",
-          deviceId: "1234",
+          ln: latitude?.toString() ?? '',
+          lt: longitude?.toString() ?? '',
+          deviceId: deviceId ?? '',
           plNo: _insecticideLicenseController.text,
           photoFile: pdfFile,
           expireDate: expireDate,
@@ -1191,11 +1202,11 @@ class _licence4State extends State<licence4> {
         final String expireDate = _fertilizerNoExpiry ? 'Permanent' : DateFormat('yyyy-MM-dd').format(_fertilizerExpirationDate!);
 
         fertilizerSuccess = await _uploadFertilizerLicense(
-          cid: "23262954",
+          cid: "85788578",
           cusId: _actualCustomerId!, // Use actual customer ID
-          ln: "12",
-          lt: "123",
-          deviceId: "1234",
+           ln: latitude?.toString() ?? '',
+          lt: longitude?.toString() ?? '',
+          deviceId: deviceId ?? '',
           flNo: _fertilizerLicenseController.text,
           photoFile: pdfFile,
           expireDate: expireDate,

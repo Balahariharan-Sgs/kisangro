@@ -404,14 +404,19 @@ class _kycState extends State<kyc> {
 
   Future<void> _fetchKycDataOldApi(int cusId) async {
     try {
+      final prefs = await SharedPreferences.getInstance();
+
+      double? latitude = prefs.getDouble('latitude');
+      double? longitude = prefs.getDouble('longitude');
+      String? deviceId = prefs.getString('device_id');
       final response = await _callApiWithRetry(
         body: {
           'cid': _cid,
           'type': '1003',
           'cus_id': cusId.toString(),
-          'ln': '2324',
-          'lt': '23',
-          'device_id': '122',
+          'lt': latitude?.toString() ?? '',
+          'ln': longitude?.toString() ?? '',
+          'device_id': deviceId ?? '',
         },
       );
 
@@ -791,13 +796,19 @@ class _kycState extends State<kyc> {
 
                           // GSTIN verification logic here
                           try {
+                            final prefs = await SharedPreferences.getInstance();
+
+                            double? latitude = prefs.getDouble('latitude');
+                            double? longitude = prefs.getDouble('longitude');
+                            String? deviceId = prefs.getString('device_id');
+
                             final response = await _verifyGstin(
                               gstin: _gstinController.text,
                               cid: _cid,
-                              type: '1018',
-                              ln: '2324',
-                              lt: '23',
-                              deviceId: '122',
+                              type: '1010',
+                              lt: latitude?.toString() ?? '',
+                              ln: longitude?.toString() ?? '',
+                              deviceId: deviceId ?? '',
                               cusId: _cusId?.toString() ?? '',
                             );
 
@@ -1320,7 +1331,12 @@ class _kycState extends State<kyc> {
 
       // Retry logic for multipart request
       for (int attempt = 1; attempt <= 3; attempt++) {
-        try {
+       try {
+      final prefs = await SharedPreferences.getInstance();
+
+      double? latitude = prefs.getDouble('latitude');
+      double? longitude = prefs.getDouble('longitude');
+      String? deviceId = prefs.getString('device_id');
           debugPrint('KYC Screen: Upload attempt $attempt/3');
 
           // Create multipart request
@@ -1330,9 +1346,9 @@ class _kycState extends State<kyc> {
           request.fields.addAll({
             'cid': _cid,
             'type': '1023',
-            'ln': '2324',
-            'lt': '23',
-            'device_id': '122',
+            'lt': latitude?.toString() ?? '',
+          'ln': longitude?.toString() ?? '',
+          'device_id': deviceId ?? '',
             'cus_id': _cusId?.toString() ?? '',
             'kyc_id': kycId,
             'name': _fullNameController.text,
