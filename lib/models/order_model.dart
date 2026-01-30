@@ -7,13 +7,13 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 enum OrderStatus {
-  pending,     // Payment initiated but not confirmed
-  booked,      // Payment successful, order confirmed
-  dispatched,  // Order shipped
-  delivered,   // Order delivered
-  cancelled,   // Order cancelled
-  confirmed,   // Order confirmed (similar to booked)
-  failed,      // Payment failed
+  pending, // Payment initiated but not confirmed
+  booked, // Payment successful, order confirmed
+  dispatched, // Order shipped
+  delivered, // Order delivered
+  cancelled, // Order cancelled
+  confirmed, // Order confirmed (similar to booked)
+  failed, // Payment failed
 }
 
 class OrderedProduct {
@@ -39,7 +39,11 @@ class OrderedProduct {
     required this.orderId,
   });
 
-  factory OrderedProduct.fromProduct(Product product, int quantity, String orderId) {
+  factory OrderedProduct.fromProduct(
+    Product product,
+    int quantity,
+    String orderId,
+  ) {
     return OrderedProduct(
       id: product.mainProductId,
       title: product.title,
@@ -47,7 +51,10 @@ class OrderedProduct {
       imageUrl: product.imageUrl,
       category: product.category,
       unit: product.selectedUnit.size,
-      price: product.sellingPricePerSelectedUnit ?? product.pricePerSelectedUnit ?? 0.0,
+      price:
+          product.sellingPricePerSelectedUnit ??
+          product.pricePerSelectedUnit ??
+          0.0,
       quantity: quantity,
       orderId: orderId,
     );
@@ -118,14 +125,16 @@ class Order {
 
   factory Order.fromJson(Map<String, dynamic> json) => Order(
     id: json['id'] as String,
-    products: (json['products'] as List)
-        .map((productJson) => OrderedProduct.fromJson(productJson))
-        .toList(),
+    products:
+        (json['products'] as List)
+            .map((productJson) => OrderedProduct.fromJson(productJson))
+            .toList(),
     totalAmount: json['totalAmount'] as double,
     orderDate: DateTime.parse(json['orderDate'] as String),
-    deliveredDate: json['deliveredDate'] != null
-        ? DateTime.parse(json['deliveredDate'] as String)
-        : null,
+    deliveredDate:
+        json['deliveredDate'] != null
+            ? DateTime.parse(json['deliveredDate'] as String)
+            : null,
     status: OrderStatus.values[json['status'] as int],
     paymentMethod: json['paymentMethod'] as String,
   );
@@ -135,8 +144,8 @@ class OrderModel extends ChangeNotifier {
   final List<Order> _orders = [];
   final DatabaseHelper _dbHelper = DatabaseHelper.instance;
 
-  static const String _orderApiUrl = 'https://sgserp.in/erp/api/m_api/';
-  static const String _cid = '23262954';
+  static const String _orderApiUrl = 'https://erpsmart.in/total/api/m_api/';
+  static const String _cid = '85788578';
 
   List<Order> get orders => List.unmodifiable(_orders);
 
@@ -206,7 +215,9 @@ class OrderModel extends ChangeNotifier {
 
           for (int i = 0; i < apiOrders.length; i++) {
             final orderData = apiOrders[i];
-            debugPrint('Processing order ${i + 1}/${apiOrders.length}: $orderData');
+            debugPrint(
+              'Processing order ${i + 1}/${apiOrders.length}: $orderData',
+            );
 
             try {
               final order = _parseOrderFromApi(orderData);
@@ -224,19 +235,27 @@ class OrderModel extends ChangeNotifier {
           }
 
           _sortOrdersByDate();
-          debugPrint('Successfully loaded ${_orders.length} orders into memory');
+          debugPrint(
+            'Successfully loaded ${_orders.length} orders into memory',
+          );
 
           // Debug print all loaded orders
           for (var order in _orders) {
-            debugPrint('Loaded Order - ID: ${order.id}, Status: ${order.status.name}');
+            debugPrint(
+              'Loaded Order - ID: ${order.id}, Status: ${order.status.name}',
+            );
           }
 
           notifyListeners();
         } else {
-          debugPrint('API response data is not a List: ${responseData.runtimeType}');
+          debugPrint(
+            'API response data is not a List: ${responseData.runtimeType}',
+          );
         }
       } else {
-        debugPrint('API returned error: ${response['message'] ?? 'Unknown error'}');
+        debugPrint(
+          'API returned error: ${response['message'] ?? 'Unknown error'}',
+        );
       }
     } catch (e, stackTrace) {
       debugPrint('Exception in _loadOrdersFromApi: $e');
@@ -252,7 +271,9 @@ class OrderModel extends ChangeNotifier {
 
       // Extract order_id first - ensure we get the numeric ID from API
       final dynamic orderIdRaw = orderData['order_id'];
-      debugPrint('Raw order_id from API: $orderIdRaw (type: ${orderIdRaw.runtimeType})');
+      debugPrint(
+        'Raw order_id from API: $orderIdRaw (type: ${orderIdRaw.runtimeType})',
+      );
 
       String? orderIdFromApi;
       if (orderIdRaw != null) {
@@ -264,7 +285,9 @@ class OrderModel extends ChangeNotifier {
         debugPrint('Using API order_id: "$orderIdFromApi"');
       }
 
-      if (orderIdFromApi == null || orderIdFromApi.isEmpty || orderIdFromApi == 'null') {
+      if (orderIdFromApi == null ||
+          orderIdFromApi.isEmpty ||
+          orderIdFromApi == 'null') {
         debugPrint('Invalid order_id, skipping this order');
         return null;
       }
@@ -315,7 +338,10 @@ class OrderModel extends ChangeNotifier {
       }
 
       // Calculate total amount
-      double totalAmount = products.fold(0.0, (sum, product) => sum + (product.price * product.quantity));
+      double totalAmount = products.fold(
+        0.0,
+        (sum, product) => sum + (product.price * product.quantity),
+      );
       debugPrint('Calculated total amount: $totalAmount');
 
       // Parse status
@@ -333,14 +359,12 @@ class OrderModel extends ChangeNotifier {
 
       debugPrint('Successfully created order with final ID: "${order.id}"');
       return order;
-
     } catch (e, stackTrace) {
       debugPrint('Exception in _parseOrderFromApi: $e');
       debugPrint('Stack trace: $stackTrace');
       return null;
     }
   }
-
 
   // Helper methods for safe parsing
   double _parseDouble(dynamic value) {
@@ -402,10 +426,7 @@ class OrderModel extends ChangeNotifier {
       debugPrint('=== CANCEL ORDER WITH API ===');
       debugPrint('Order ID to cancel: $orderId');
 
-      final response = await _callOrderApi(
-        type: '2021',
-        orderId: orderId,
-      );
+      final response = await _callOrderApi(type: '1027', orderId: orderId);
 
       debugPrint('Cancel order API response: $response');
       return response['error'] == 'false';
@@ -422,12 +443,16 @@ class OrderModel extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     final cusId = prefs.getInt('cus_id')?.toString() ?? '';
 
+    double? latitude = prefs.getDouble('latitude');
+    double? longitude = prefs.getDouble('longitude');
+    String? deviceId = prefs.getString('device_id');
+
     final body = {
       'cid': _cid,
       'type': type,
-      'ln': '2324',
-      'lt': '23',
-      'device_id': '1223',
+      'lt': latitude?.toString() ?? '',
+      'ln': longitude?.toString() ?? '',
+      'device_id': deviceId ?? '',
       'cus_id': cusId,
     };
 
@@ -438,11 +463,13 @@ class OrderModel extends ChangeNotifier {
     try {
       debugPrint('Making API call with body: $body');
 
-      final response = await http.post(
-        Uri.parse(_orderApiUrl),
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: body,
-      ).timeout(const Duration(seconds: 15));
+      final response = await http
+          .post(
+            Uri.parse(_orderApiUrl),
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: body,
+          )
+          .timeout(const Duration(seconds: 15));
 
       debugPrint('API Response Status: ${response.statusCode}');
       debugPrint('API Response Body: ${response.body}');
@@ -483,7 +510,9 @@ class OrderModel extends ChangeNotifier {
 
     for (int i = 0; i < _orders.length; i++) {
       final order = _orders[i];
-      debugPrint('  [$i] ID: "${order.id}" (${order.id.length} chars), Status: ${order.status.name}');
+      debugPrint(
+        '  [$i] ID: "${order.id}" (${order.id.length} chars), Status: ${order.status.name}',
+      );
       debugPrint('      ID Match: ${order.id == orderId}');
     }
 
@@ -529,7 +558,8 @@ class OrderModel extends ChangeNotifier {
   }
 
   List<Order> getOrdersByStatus(OrderStatus status) {
-    final filteredOrders = _orders.where((order) => order.status == status).toList();
+    final filteredOrders =
+        _orders.where((order) => order.status == status).toList();
     // Return filtered orders sorted by date (newest first)
     filteredOrders.sort((a, b) => b.orderDate.compareTo(a.orderDate));
     return filteredOrders;
@@ -551,7 +581,9 @@ class OrderModel extends ChangeNotifier {
     debugPrint('=== VALIDATE ORDER IDS ===');
     for (var order in _orders) {
       if (order.id.startsWith('ORDER_')) {
-        debugPrint('Found generated ID: ${order.id} - This may not work with API');
+        debugPrint(
+          'Found generated ID: ${order.id} - This may not work with API',
+        );
       } else if (RegExp(r'^\d+$').hasMatch(order.id)) {
         debugPrint('Found API ID: ${order.id} - Should work with API');
       } else {

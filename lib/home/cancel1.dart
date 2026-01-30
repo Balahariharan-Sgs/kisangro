@@ -34,7 +34,7 @@ class _CancellationStep1PageState extends State<CancellationStep1Page> {
     'Price Too High',
     'Changed My Mind',
     'Prefer to Buy In-Store',
-    'Other Reasons'
+    'Other Reasons',
   ];
 
   @override
@@ -47,6 +47,11 @@ class _CancellationStep1PageState extends State<CancellationStep1Page> {
   Future<Map<String, dynamic>> _initiateCancellation(String orderId) async {
     try {
       final prefs = await SharedPreferences.getInstance();
+
+      double? latitude = prefs.getDouble('latitude');
+      double? longitude = prefs.getDouble('longitude');
+      String? deviceId = prefs.getString('device_id');
+
       final cusId = prefs.getInt('cus_id')?.toString() ?? '';
 
       print('=== STEP 1: INITIATING CANCELLATION ===');
@@ -54,22 +59,24 @@ class _CancellationStep1PageState extends State<CancellationStep1Page> {
       print('Customer ID: $cusId');
 
       final requestBody = {
-        'cid': '23262954',
-        'type': '2021',
-        'ln': '2324',
-        'lt': '23',
-        'device_id': '1223',
+        'cid': '85788578',
+        'type': '1027',
+        'lt': latitude?.toString() ?? '',
+        'ln': longitude?.toString() ?? '',
+        'device_id': deviceId ?? '',
         'cus_id': cusId,
         'order_id': orderId,
       };
 
       print('Request Body: $requestBody');
 
-      final response = await http.post(
-        Uri.parse('https://sgserp.in/erp/api/m_api/'),
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: requestBody,
-      ).timeout(const Duration(seconds: 15));
+      final response = await http
+          .post(
+            Uri.parse('https://sgserp.in/erp/api/m_api/'),
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: requestBody,
+          )
+          .timeout(const Duration(seconds: 15));
 
       print('Response Status Code: ${response.statusCode}');
       print('Response Body: ${response.body}');
@@ -79,7 +86,10 @@ class _CancellationStep1PageState extends State<CancellationStep1Page> {
         print('Parsed Response: $jsonResponse');
         return jsonResponse;
       }
-      return {'error': 'true', 'message': 'API failed with status ${response.statusCode}'};
+      return {
+        'error': 'true',
+        'message': 'API failed with status ${response.statusCode}',
+      };
     } catch (e) {
       print('ERROR in _initiateCancellation: $e');
       return {'error': 'true', 'message': e.toString()};
@@ -94,16 +104,21 @@ class _CancellationStep1PageState extends State<CancellationStep1Page> {
     final isDarkMode = themeMode == ThemeMode.dark;
 
     // Define colors based on theme
-    final Color gradientStartColor = isDarkMode ? Colors.black : const Color(0xffFFD9BD);
-    final Color gradientEndColor = isDarkMode ? Colors.black : const Color(0xffFFFFFF);
+    final Color gradientStartColor =
+        isDarkMode ? Colors.black : const Color(0xffFFD9BD);
+    final Color gradientEndColor =
+        isDarkMode ? Colors.black : const Color(0xffFFFFFF);
     final Color textColor = isDarkMode ? Colors.white : Colors.black;
     final Color subtitleColor = isDarkMode ? Colors.white70 : Colors.black87;
     final Color greyTextColor = isDarkMode ? Colors.grey[400]! : Colors.grey;
     final Color inputFillColor = isDarkMode ? Colors.grey[800]! : Colors.white;
-    final Color inputBorderColor = isDarkMode ? Colors.grey[600]! : Colors.black;
-    final Color inputFocusedBorderColor = isDarkMode ? Colors.white : const Color(0xffEB7720);
+    final Color inputBorderColor =
+        isDarkMode ? Colors.grey[600]! : Colors.black;
+    final Color inputFocusedBorderColor =
+        isDarkMode ? Colors.white : const Color(0xffEB7720);
     final Color radioActiveColor = const Color(0xffEB7720);
-    final Color radioInactiveColor = isDarkMode ? Colors.grey[400]! : Colors.black;
+    final Color radioInactiveColor =
+        isDarkMode ? Colors.grey[400]! : Colors.black;
     final Color orangeColor = const Color(0xffEB7720);
 
     return Scaffold(
@@ -112,7 +127,11 @@ class _CancellationStep1PageState extends State<CancellationStep1Page> {
         elevation: 0,
         title: Text(
           "Order Cancellation",
-          style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+          style: GoogleFonts.poppins(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
         ),
         leading: IconButton(
           onPressed: () {
@@ -131,144 +150,194 @@ class _CancellationStep1PageState extends State<CancellationStep1Page> {
             colors: [gradientStartColor, gradientEndColor],
           ),
         ),
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : SingleChildScrollView(
-          padding: EdgeInsets.only(
-            left: 20,
-            right: 20,
-            top: 20,
-            bottom: isKeyboardVisible ? keyboardHeight + 10 : 20,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Align(
-                alignment: Alignment.centerRight,
-                child: Text(
-                  "step 1/2",
-                  style: GoogleFonts.poppins(color: greyTextColor, fontSize: 18),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                'Cancellation Reason',
-                style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 16, color: textColor),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  border: Border.all(color: inputBorderColor),
-                  borderRadius: BorderRadius.circular(8),
-                  color: inputFillColor,
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    ...reasons.map((reason) {
-                      return RadioListTile<String>(
-                        title: Text(
-                          reason,
-                          style: GoogleFonts.poppins(fontSize: 16, color: textColor),
-                        ),
-                        value: reason,
-                        groupValue: selectedReason,
-                        onChanged: (value) {
-                          setState(() {
-                            selectedReason = value!;
-                          });
-                        },
-                        contentPadding: EdgeInsets.zero,
-                        visualDensity: VisualDensity.compact,
-                        activeColor: radioActiveColor,
-                        controlAffinity: ListTileControlAffinity.leading,
-                        tileColor: inputFillColor,
-                      );
-                    }).toList(),
-                    if (selectedReason == "Other Reasons")
-                      Padding(
-                        padding: const EdgeInsets.only(left: 50, right: 30, bottom: 30),
-                        child: TextField(
-                          controller: otherController,
-                          style: GoogleFonts.poppins(color: textColor),
-                          decoration: InputDecoration(
-                            hintText: "Type Here...",
-                            hintStyle: GoogleFonts.poppins(color: greyTextColor),
-                            filled: true,
-                            fillColor: inputFillColor,
-                            border: OutlineInputBorder(borderSide: BorderSide(color: inputBorderColor)),
-                            enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: inputBorderColor)),
-                            focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: inputFocusedBorderColor)),
+        child:
+            _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : SingleChildScrollView(
+                  padding: EdgeInsets.only(
+                    left: 20,
+                    right: 20,
+                    top: 20,
+                    bottom: isKeyboardVisible ? keyboardHeight + 10 : 20,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          "step 1/2",
+                          style: GoogleFonts.poppins(
+                            color: greyTextColor,
+                            fontSize: 18,
                           ),
-                          maxLines: 3,
                         ),
                       ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 30),
-              Center(
-                child: SizedBox(
-                  width: MediaQuery.of(context).size.width * 0.7,
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: () async {
-                      print('=== CANCELLATION STEP 1 BUTTON PRESSED ===');
-                      print('Order ID: ${widget.orderId}');
-                      print('Selected Reason: $selectedReason');
+                      const SizedBox(height: 20),
+                      Text(
+                        'Cancellation Reason',
+                        style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: textColor,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          border: Border.all(color: inputBorderColor),
+                          borderRadius: BorderRadius.circular(8),
+                          color: inputFillColor,
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            ...reasons.map((reason) {
+                              return RadioListTile<String>(
+                                title: Text(
+                                  reason,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 16,
+                                    color: textColor,
+                                  ),
+                                ),
+                                value: reason,
+                                groupValue: selectedReason,
+                                onChanged: (value) {
+                                  setState(() {
+                                    selectedReason = value!;
+                                  });
+                                },
+                                contentPadding: EdgeInsets.zero,
+                                visualDensity: VisualDensity.compact,
+                                activeColor: radioActiveColor,
+                                controlAffinity:
+                                    ListTileControlAffinity.leading,
+                                tileColor: inputFillColor,
+                              );
+                            }).toList(),
+                            if (selectedReason == "Other Reasons")
+                              Padding(
+                                padding: const EdgeInsets.only(
+                                  left: 50,
+                                  right: 30,
+                                  bottom: 30,
+                                ),
+                                child: TextField(
+                                  controller: otherController,
+                                  style: GoogleFonts.poppins(color: textColor),
+                                  decoration: InputDecoration(
+                                    hintText: "Type Here...",
+                                    hintStyle: GoogleFonts.poppins(
+                                      color: greyTextColor,
+                                    ),
+                                    filled: true,
+                                    fillColor: inputFillColor,
+                                    border: OutlineInputBorder(
+                                      borderSide: BorderSide(
+                                        color: inputBorderColor,
+                                      ),
+                                    ),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderSide: BorderSide(
+                                        color: inputBorderColor,
+                                      ),
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderSide: BorderSide(
+                                        color: inputFocusedBorderColor,
+                                      ),
+                                    ),
+                                  ),
+                                  maxLines: 3,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 30),
+                      Center(
+                        child: SizedBox(
+                          width: MediaQuery.of(context).size.width * 0.7,
+                          height: 50,
+                          child: ElevatedButton(
+                            onPressed: () async {
+                              print(
+                                '=== CANCELLATION STEP 1 BUTTON PRESSED ===',
+                              );
+                              print('Order ID: ${widget.orderId}');
+                              print('Selected Reason: $selectedReason');
 
-                      setState(() {
-                        _isLoading = true;
-                      });
+                              setState(() {
+                                _isLoading = true;
+                              });
 
-                      // First initiate cancellation
-                      print('About to call _initiateCancellation...');
-                      final initiationResult = await _initiateCancellation(widget.orderId);
-                      print('_initiateCancellation completed with result: $initiationResult');
+                              // First initiate cancellation
+                              print('About to call _initiateCancellation...');
+                              final initiationResult =
+                                  await _initiateCancellation(widget.orderId);
+                              print(
+                                '_initiateCancellation completed with result: $initiationResult',
+                              );
 
-                      setState(() {
-                        _isLoading = false;
-                      });
+                              setState(() {
+                                _isLoading = false;
+                              });
 
-                      // Check if API returned success (error: "false" as string)
-                      if (initiationResult['error'] == 'false' || initiationResult['error'] == false) {
-                        print('Step 1 API successful, proceeding to Step 2...');
-                        // Proceed to step 2
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => CancellationStep2Page(
-                              orderId: widget.orderId,
-                              cancellationReason: selectedReason == "Other Reasons"
-                                  ? otherController.text
-                                  : selectedReason,
-                              onCancelConfirmed: widget.onCancelConfirmed,
+                              // Check if API returned success (error: "false" as string)
+                              if (initiationResult['error'] == 'false' ||
+                                  initiationResult['error'] == false) {
+                                print(
+                                  'Step 1 API successful, proceeding to Step 2...',
+                                );
+                                // Proceed to step 2
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder:
+                                        (_) => CancellationStep2Page(
+                                          orderId: widget.orderId,
+                                          cancellationReason:
+                                              selectedReason == "Other Reasons"
+                                                  ? otherController.text
+                                                  : selectedReason,
+                                          onCancelConfirmed:
+                                              widget.onCancelConfirmed,
+                                        ),
+                                  ),
+                                );
+                              } else {
+                                print(
+                                  'Step 1 API failed: ${initiationResult['message'] ?? 'Unknown error'}',
+                                );
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'Failed to initiate cancellation: ${initiationResult['message'] ?? 'Unknown error'}',
+                                    ),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(5),
+                              ),
+                              backgroundColor: orangeColor,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                            ),
+                            child: Text(
+                              'Proceed',
+                              style: GoogleFonts.poppins(color: Colors.white),
                             ),
                           ),
-                        );
-                      } else {
-                        print('Step 1 API failed: ${initiationResult['message'] ?? 'Unknown error'}');
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Failed to initiate cancellation: ${initiationResult['message'] ?? 'Unknown error'}'),
-                            backgroundColor: Colors.red,
-                          ),
-                        );
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
-                      backgroundColor: orangeColor,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    child: Text('Proceed', style: GoogleFonts.poppins(color: Colors.white)),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -310,6 +379,11 @@ class _CancellationStep2PageState extends State<CancellationStep2Page> {
   Future<Map<String, dynamic>> _submitCancellationWithBankDetails() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+
+      double? latitude = prefs.getDouble('latitude');
+      double? longitude = prefs.getDouble('longitude');
+      String? deviceId = prefs.getString('device_id');
+
       final cusId = prefs.getInt('cus_id')?.toString() ?? '';
 
       print('=== STEP 2: SUBMITTING BANK DETAILS ===');
@@ -322,12 +396,12 @@ class _CancellationStep2PageState extends State<CancellationStep2Page> {
       print('Holder Name: ${holderNameController.text}');
 
       final requestBody = {
-        'cid': '23262954',
+        'cid': '85788578',
         'cus_id': cusId,
-        'device_id': '345343',
-        'ln': '2324',
-        'lt': '23',
-        'type': '1017',
+        'lt': latitude?.toString() ?? '',
+        'ln': longitude?.toString() ?? '',
+        'device_id': deviceId ?? '',
+        'type': '1028',
         'order_id': widget.orderId,
         'order_status': 'cancel',
         'cancellation_reason': widget.cancellationReason,
@@ -336,16 +410,18 @@ class _CancellationStep2PageState extends State<CancellationStep2Page> {
         'bank_name': bankNameController.text,
         'holder_name': holderNameController.text,
         'acc_ifsc': ifscController.text,
-        'refund_status': 'not yet'
+        'refund_status': 'not yet',
       };
 
       print('Request Body: $requestBody');
 
-      final response = await http.post(
-        Uri.parse('https://sgserp.in/erp/api/m_api/'),
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: requestBody,
-      ).timeout(const Duration(seconds: 15));
+      final response = await http
+          .post(
+            Uri.parse('https://erpsmart.in/total/api/m_api/'),
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: requestBody,
+          )
+          .timeout(const Duration(seconds: 15));
 
       print('Response Status Code: ${response.statusCode}');
       print('Response Body: ${response.body}');
@@ -355,7 +431,10 @@ class _CancellationStep2PageState extends State<CancellationStep2Page> {
         print('Parsed Response: $jsonResponse');
         return jsonResponse;
       }
-      return {'error': true, 'message': 'API failed with status ${response.statusCode}'};
+      return {
+        'error': true,
+        'message': 'API failed with status ${response.statusCode}',
+      };
     } catch (e) {
       print('ERROR in _submitCancellationWithBankDetails: $e');
       return {'error': true, 'message': e.toString()};
@@ -384,11 +463,13 @@ class _CancellationStep2PageState extends State<CancellationStep2Page> {
 
       print('Request Body: $requestBody');
 
-      final response = await http.post(
-        Uri.parse('https://sgserp.in/erp/api/m_api/'),
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: requestBody,
-      ).timeout(const Duration(seconds: 15));
+      final response = await http
+          .post(
+            Uri.parse('https://sgserp.in/erp/api/m_api/'),
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: requestBody,
+          )
+          .timeout(const Duration(seconds: 15));
 
       print('Response Status Code: ${response.statusCode}');
       print('Response Body: ${response.body}');
@@ -398,7 +479,10 @@ class _CancellationStep2PageState extends State<CancellationStep2Page> {
         print('Parsed Response: $jsonResponse');
         return jsonResponse;
       }
-      return {'error': true, 'message': 'API failed with status ${response.statusCode}'};
+      return {
+        'error': true,
+        'message': 'API failed with status ${response.statusCode}',
+      };
     } catch (e) {
       print('ERROR in _fetchCancelledOrderDetails: $e');
       return {'error': true, 'message': e.toString()};
@@ -412,14 +496,18 @@ class _CancellationStep2PageState extends State<CancellationStep2Page> {
     final themeMode = Provider.of<ThemeModeProvider>(context).themeMode;
     final isDarkMode = themeMode == ThemeMode.dark;
 
-    final Color gradientStartColor = isDarkMode ? Colors.black : const Color(0xffFFD9BD);
-    final Color gradientEndColor = isDarkMode ? Colors.black : const Color(0xffFFFFFF);
+    final Color gradientStartColor =
+        isDarkMode ? Colors.black : const Color(0xffFFD9BD);
+    final Color gradientEndColor =
+        isDarkMode ? Colors.black : const Color(0xffFFFFFF);
     final Color textColor = isDarkMode ? Colors.white : Colors.black;
     final Color subtitleColor = isDarkMode ? Colors.white70 : Colors.black87;
     final Color greyTextColor = isDarkMode ? Colors.grey[400]! : Colors.grey;
     final Color inputFillColor = isDarkMode ? Colors.grey[800]! : Colors.white;
-    final Color inputBorderColor = isDarkMode ? Colors.grey[600]! : Colors.grey.shade400;
-    final Color inputFocusedBorderColor = isDarkMode ? Colors.white : const Color(0xffEB7720);
+    final Color inputBorderColor =
+        isDarkMode ? Colors.grey[600]! : Colors.grey.shade400;
+    final Color inputFocusedBorderColor =
+        isDarkMode ? Colors.white : const Color(0xffEB7720);
     final Color orangeColor = const Color(0xffEB7720);
 
     return Scaffold(
@@ -428,7 +516,11 @@ class _CancellationStep2PageState extends State<CancellationStep2Page> {
         elevation: 0,
         title: Text(
           "Order Cancellation",
-          style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+          style: GoogleFonts.poppins(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
         ),
         leading: IconButton(
           onPressed: () {
@@ -447,187 +539,282 @@ class _CancellationStep2PageState extends State<CancellationStep2Page> {
             colors: [gradientStartColor, gradientEndColor],
           ),
         ),
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : SingleChildScrollView(
-          padding: EdgeInsets.only(
-            left: 20,
-            right: 20,
-            top: 20,
-            bottom: isKeyboardVisible ? keyboardHeight + 10 : 20,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Align(
-                alignment: Alignment.centerRight,
-                child: Text(
-                  "step 2/2",
-                  style: GoogleFonts.poppins(color: greyTextColor, fontSize: 18),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                'Enter Bank Details',
-                style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 16, color: textColor),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                '(Note: The cancellation amount will be refunded to your bank account shortly. So enter bank details carefully)',
-                style: GoogleFonts.poppins(fontSize: 12, color: subtitleColor),
-              ),
-              const SizedBox(height: 16),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 0),
-                child: TextField(
-                  controller: bankNameController,
-                  style: GoogleFonts.poppins(color: textColor),
-                  decoration: InputDecoration(
-                    filled: true,
-                    fillColor: inputFillColor,
-                    hintText: 'Bank name',
-                    hintStyle: GoogleFonts.poppins(color: greyTextColor),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: inputBorderColor)),
-                    enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: inputBorderColor), borderRadius: BorderRadius.circular(8)),
-                    focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: inputFocusedBorderColor), borderRadius: BorderRadius.circular(8)),
+        child:
+            _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : SingleChildScrollView(
+                  padding: EdgeInsets.only(
+                    left: 20,
+                    right: 20,
+                    top: 20,
+                    bottom: isKeyboardVisible ? keyboardHeight + 10 : 20,
                   ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 0),
-                child: TextField(
-                  controller: accountNumberController,
-                  style: GoogleFonts.poppins(color: textColor),
-                  decoration: InputDecoration(
-                    filled: true,
-                    fillColor: inputFillColor,
-                    hintText: 'Bank Account number',
-                    hintStyle: GoogleFonts.poppins(color: greyTextColor),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: inputBorderColor)),
-                    enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: inputBorderColor), borderRadius: BorderRadius.circular(8)),
-                    focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: inputFocusedBorderColor), borderRadius: BorderRadius.circular(8)),
-                  ),
-                  keyboardType: TextInputType.number,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 0),
-                child: TextField(
-                  controller: ifscController,
-                  style: GoogleFonts.poppins(color: textColor),
-                  decoration: InputDecoration(
-                    filled: true,
-                    fillColor: inputFillColor,
-                    hintText: 'IFSC code',
-                    hintStyle: GoogleFonts.poppins(color: greyTextColor),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: inputBorderColor)),
-                    enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: inputBorderColor), borderRadius: BorderRadius.circular(8)),
-                    focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: inputFocusedBorderColor), borderRadius: BorderRadius.circular(8)),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 0),
-                child: TextField(
-                  controller: holderNameController,
-                  style: GoogleFonts.poppins(color: textColor),
-                  decoration: InputDecoration(
-                    filled: true,
-                    fillColor: inputFillColor,
-                    hintText: 'Account holder name',
-                    hintStyle: GoogleFonts.poppins(color: greyTextColor),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: inputBorderColor)),
-                    enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: inputBorderColor), borderRadius: BorderRadius.circular(8)),
-                    focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: inputFocusedBorderColor), borderRadius: BorderRadius.circular(8)),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 30),
-              Center(
-                child: SizedBox(
-                  width: MediaQuery.of(context).size.width * 0.7,
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: () async {
-                      if (bankNameController.text.isEmpty ||
-                          accountNumberController.text.isEmpty ||
-                          ifscController.text.isEmpty ||
-                          holderNameController.text.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Please fill all bank details.', style: GoogleFonts.poppins())),
-                        );
-                        return;
-                      }
-
-                      setState(() {
-                        _isLoading = true;
-                      });
-
-                      // Submit cancellation with bank details
-                      final result = await _submitCancellationWithBankDetails();
-
-                      // If submission successful, fetch the cancelled order details
-                      if (result['error'] == false || result['error'] == 'false') {
-                        // Fetch cancelled order details for confirmation
-                        final fetchResult = await _fetchCancelledOrderDetails();
-
-                        setState(() {
-                          _isLoading = false;
-                        });
-
-                        if (fetchResult['error'] == false || fetchResult['error'] == 'false') {
-                          debugPrint('Cancellation process completed successfully');
-                          debugPrint('Cancelled order details: ${fetchResult['data']}');
-                        }
-
-                        // Success - update local state and navigate back
-                        if (widget.onCancelConfirmed != null) {
-                          widget.onCancelConfirmed!();
-                        }
-
-                        final orderModel = Provider.of<OrderModel>(context, listen: false);
-                        orderModel.updateOrderStatus(widget.orderId, OrderStatus.cancelled);
-
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Order ${widget.orderId} cancelled successfully!', style: GoogleFonts.poppins()),
-                            backgroundColor: Colors.green,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          "step 2/2",
+                          style: GoogleFonts.poppins(
+                            color: greyTextColor,
+                            fontSize: 18,
                           ),
-                        );
-
-                        Navigator.pushAndRemoveUntil(
-                          context,
-                          MaterialPageRoute(builder: (_) => const MyOrder()),
-                              (Route<dynamic> route) => false,
-                        );
-                      } else {
-                        setState(() {
-                          _isLoading = false;
-                        });
-
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Failed to cancel order: ${result['message'] ?? 'Unknown error'}', style: GoogleFonts.poppins()),
-                            backgroundColor: Colors.red,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        'Enter Bank Details',
+                        style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: textColor,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '(Note: The cancellation amount will be refunded to your bank account shortly. So enter bank details carefully)',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          color: subtitleColor,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 0),
+                        child: TextField(
+                          controller: bankNameController,
+                          style: GoogleFonts.poppins(color: textColor),
+                          decoration: InputDecoration(
+                            filled: true,
+                            fillColor: inputFillColor,
+                            hintText: 'Bank name',
+                            hintStyle: GoogleFonts.poppins(
+                              color: greyTextColor,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide(color: inputBorderColor),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderSide: BorderSide(color: inputBorderColor),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderSide: BorderSide(
+                                color: inputFocusedBorderColor,
+                              ),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
                           ),
-                        );
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
-                      backgroundColor: orangeColor,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    child: Text('Verify & Submit', style: GoogleFonts.poppins(color: Colors.white)),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 0),
+                        child: TextField(
+                          controller: accountNumberController,
+                          style: GoogleFonts.poppins(color: textColor),
+                          decoration: InputDecoration(
+                            filled: true,
+                            fillColor: inputFillColor,
+                            hintText: 'Bank Account number',
+                            hintStyle: GoogleFonts.poppins(
+                              color: greyTextColor,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide(color: inputBorderColor),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderSide: BorderSide(color: inputBorderColor),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderSide: BorderSide(
+                                color: inputFocusedBorderColor,
+                              ),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          keyboardType: TextInputType.number,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 0),
+                        child: TextField(
+                          controller: ifscController,
+                          style: GoogleFonts.poppins(color: textColor),
+                          decoration: InputDecoration(
+                            filled: true,
+                            fillColor: inputFillColor,
+                            hintText: 'IFSC code',
+                            hintStyle: GoogleFonts.poppins(
+                              color: greyTextColor,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide(color: inputBorderColor),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderSide: BorderSide(color: inputBorderColor),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderSide: BorderSide(
+                                color: inputFocusedBorderColor,
+                              ),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 0),
+                        child: TextField(
+                          controller: holderNameController,
+                          style: GoogleFonts.poppins(color: textColor),
+                          decoration: InputDecoration(
+                            filled: true,
+                            fillColor: inputFillColor,
+                            hintText: 'Account holder name',
+                            hintStyle: GoogleFonts.poppins(
+                              color: greyTextColor,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide(color: inputBorderColor),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderSide: BorderSide(color: inputBorderColor),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderSide: BorderSide(
+                                color: inputFocusedBorderColor,
+                              ),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 30),
+                      Center(
+                        child: SizedBox(
+                          width: MediaQuery.of(context).size.width * 0.7,
+                          height: 50,
+                          child: ElevatedButton(
+                            onPressed: () async {
+                              if (bankNameController.text.isEmpty ||
+                                  accountNumberController.text.isEmpty ||
+                                  ifscController.text.isEmpty ||
+                                  holderNameController.text.isEmpty) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'Please fill all bank details.',
+                                      style: GoogleFonts.poppins(),
+                                    ),
+                                  ),
+                                );
+                                return;
+                              }
+
+                              setState(() {
+                                _isLoading = true;
+                              });
+
+                              // Submit cancellation with bank details
+                              final result =
+                                  await _submitCancellationWithBankDetails();
+
+                              // If submission successful, fetch the cancelled order details
+                              if (result['error'] == false ||
+                                  result['error'] == 'false') {
+                                // Fetch cancelled order details for confirmation
+                                final fetchResult =
+                                    await _fetchCancelledOrderDetails();
+
+                                setState(() {
+                                  _isLoading = false;
+                                });
+
+                                if (fetchResult['error'] == false ||
+                                    fetchResult['error'] == 'false') {
+                                  debugPrint(
+                                    'Cancellation process completed successfully',
+                                  );
+                                  debugPrint(
+                                    'Cancelled order details: ${fetchResult['data']}',
+                                  );
+                                }
+
+                                // Success - update local state and navigate back
+                                if (widget.onCancelConfirmed != null) {
+                                  widget.onCancelConfirmed!();
+                                }
+
+                                final orderModel = Provider.of<OrderModel>(
+                                  context,
+                                  listen: false,
+                                );
+                                orderModel.updateOrderStatus(
+                                  widget.orderId,
+                                  OrderStatus.cancelled,
+                                );
+
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'Order ${widget.orderId} cancelled successfully!',
+                                      style: GoogleFonts.poppins(),
+                                    ),
+                                    backgroundColor: Colors.green,
+                                  ),
+                                );
+
+                                Navigator.pushAndRemoveUntil(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const MyOrder(),
+                                  ),
+                                  (Route<dynamic> route) => false,
+                                );
+                              } else {
+                                setState(() {
+                                  _isLoading = false;
+                                });
+
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'Failed to cancel order: ${result['message'] ?? 'Unknown error'}',
+                                      style: GoogleFonts.poppins(),
+                                    ),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(5),
+                              ),
+                              backgroundColor: orangeColor,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                            ),
+                            child: Text(
+                              'Verify & Submit',
+                              style: GoogleFonts.poppins(color: Colors.white),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              )
-            ],
-          ),
-        ),
       ),
     );
   }

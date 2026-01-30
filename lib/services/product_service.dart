@@ -20,9 +20,9 @@ class ProductService extends ChangeNotifier {
   static List<String> _wishlistProductIds = [];
   static const String _wishlistKey = 'wishlist_products';
 
-  static const String _productApiUrl = 'https://sgserp.in/erp/api/m_api/';
+  static const String _productApiUrl = 'https://erpsmart.in/total/api/m_api/';
   // UPDATED API PARAMETERS
-  static const String _cid = '23262954'; // Consistent CID
+  static const String _cid = '85788578'; // Consistent CID
   static const String _ln = '123';
   static const String _lt = '123';
   static const String _deviceId = '123';
@@ -516,15 +516,21 @@ class ProductService extends ChangeNotifier {
 
   /// NEW: Static method to fetch advertisement data from API (type 2014)
   static Future<List<Ad>> fetchAds() async {
-    debugPrint('ProductService: Attempting to load Ads data from API via POST (type=2014): $_productApiUrl');
+    debugPrint('ProductService: Attempting to load Ads data from API via POST (type=1020): $_productApiUrl');
     List<Ad> ads = [];
-    try {
+       try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      double? latitude = prefs.getDouble('latitude');
+      double? longitude = prefs.getDouble('longitude');
+      String? deviceId = prefs.getString('device_id');
+
       final requestBody = {
         'cid': _cid,
-        'type': '2014',
-        'ln': '322334', // Specific ln for ads API
-        'lt': '233432', // Specific lt for ads API
-        'device_id': '122334', // Specific device_id for ads API
+        'type': '1020',
+        'ln': latitude?.toString() ?? '',
+        'lt': longitude?.toString() ?? '',
+        'device_id': deviceId ?? '', // Specific device_id for ads API
       };
 
       final response = await http.post(
@@ -536,8 +542,8 @@ class ProductService extends ChangeNotifier {
         body: requestBody,
       ).timeout(const Duration(seconds: 30));
 
-      debugPrint('ProductService: Response Status Code (type=2014): ${response.statusCode}');
-      debugPrint('ProductService: Raw Response Body (type=2014): ${response.body}');
+      debugPrint('ProductService: Response Status Code (type=1020): ${response.statusCode}');
+      debugPrint('ProductService: Raw Response Body (type=1020): ${response.body}');
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> responseData = json.decode(response.body);
@@ -546,34 +552,41 @@ class ProductService extends ChangeNotifier {
           for (var item in rawAdsData) {
             ads.add(Ad.fromJson(item as Map<String, dynamic>));
           }
-          debugPrint('ProductService: Successfully parsed ${ads.length} ads from API (type=2014).');
+          debugPrint('ProductService: Successfully parsed ${ads.length} ads from API (type=1020).');
         } else {
-          debugPrint('ProductService: API response for Ads (type=2014) invalid or error: ${responseData['message']}. Response: $responseData. Returning empty list.');
+          debugPrint('ProductService: API response for Ads (type=1020) invalid or error: ${responseData['message']}. Response: $responseData. Returning empty list.');
         }
       } else {
-        debugPrint('ProductService: Failed to load Ads (type=2014). Status code: ${response.statusCode}. Response: ${response.body}. Returning empty list.');
+        debugPrint('ProductService: Failed to load Ads (type=1020). Status code: ${response.statusCode}. Response: ${response.body}. Returning empty list.');
       }
     } on TimeoutException catch (_) {
-      debugPrint('ProductService: Request for Ads (type=2014) timed out. Returning empty list.');
+      debugPrint('ProductService: Request for Ads (type=1020) timed out. Returning empty list.');
     } on http.ClientException catch (e) {
-      debugPrint('ProductService: Network error for Ads (type=2014): $e. Returning empty list.');
+      debugPrint('ProductService: Network error for Ads (type=1020): $e. Returning empty list.');
     } catch (e) {
-      debugPrint('ProductService: Unexpected error fetching Ads (type=2014): $e. Returning empty list.');
+      debugPrint('ProductService: Unexpected error fetching Ads (type=1020): $e. Returning empty list.');
     }
     return ads;
   }
 
   /// NEW: Static method to fetch Deals of the Day data from API (type 2013)
   static Future<List<Deal>> fetchDealsOfTheDay() async {
-    debugPrint('ProductService: Attempting to load Deals of the Day data from API via POST (type=2013): $_productApiUrl');
+    debugPrint('ProductService: Attempting to load Deals of the Day data from API via POST (type=1021): $_productApiUrl');
     List<Deal> deals = [];
-    try {
+       try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      double? latitude = prefs.getDouble('latitude');
+      double? longitude = prefs.getDouble('longitude');
+      String? deviceId = prefs.getString('device_id');
+
       final requestBody = {
         'cid': _cid,
-        'type': '2013',
-        'ln': '322334', // Specific ln for deals API
-        'lt': '233432', // Specific lt for deals API
-        'device_id': '122334', // Specific device_id for deals API
+        'type': '1021',
+ 'lt': latitude?.toString() ?? '1',
+        'ln': longitude?.toString() ?? '1',
+        'device_id': deviceId ?? '1',
+          
       };
 
       final response = await http.post(
@@ -585,8 +598,8 @@ class ProductService extends ChangeNotifier {
         body: requestBody,
       ).timeout(const Duration(seconds: 30));
 
-      debugPrint('ProductService: Response Status Code (type=2013): ${response.statusCode}');
-      debugPrint('ProductService: Raw Response Body (type=2013): ${response.body}');
+      debugPrint('ProductService: Response Status Code (type=1021): ${response.statusCode}');
+      debugPrint('ProductService: Raw Response Body (type=1021): ${response.body}');
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> responseData = json.decode(response.body);
@@ -595,19 +608,19 @@ class ProductService extends ChangeNotifier {
           for (var item in rawDealsData) {
             deals.add(Deal.fromJson(item as Map<String, dynamic>));
           }
-          debugPrint('ProductService: Successfully parsed ${deals.length} deals from API (type=2013).');
+          debugPrint('ProductService: Successfully parsed ${deals.length} deals from API (type=1021).');
         } else {
-          debugPrint('ProductService: API response for Deals (type=2013) invalid or error: ${responseData['message']}. Response: $responseData. Returning empty list.');
+          debugPrint('ProductService: API response for Deals (type=1021) invalid or error: ${responseData['message']}. Response: $responseData. Returning empty list.');
         }
       } else {
-        debugPrint('ProductService: Failed to load Deals (type=2013). Status code: ${response.statusCode}. Response: ${response.body}. Returning empty list.');
+        debugPrint('ProductService: Failed to load Deals (type=1021). Status code: ${response.statusCode}. Response: ${response.body}. Returning empty list.');
       }
     } on TimeoutException catch (_) {
-      debugPrint('ProductService: Request for Deals (type=2013) timed out. Returning empty list.');
+      debugPrint('ProductService: Request for Deals (type=1021) timed out. Returning empty list.');
     } on http.ClientException catch (e) {
-      debugPrint('ProductService: Network error for Deals (type=2013): $e. Returning empty list.');
+      debugPrint('ProductService: Network error for Deals (type=1021): $e. Returning empty list.');
     } catch (e) {
-      debugPrint('ProductService: Unexpected error fetching Deals (type=2013): $e. Returning empty list.');
+      debugPrint('ProductService: Unexpected error fetching Deals (type=1021): $e. Returning empty list.');
     }
     return deals;
   }
@@ -624,13 +637,19 @@ class ProductService extends ChangeNotifier {
   static Future<void> loadCategoriesFromApi() async {
     debugPrint('ProductService: Attempting to load CATEGORIES data from API via POST (type=1043): $_productApiUrl');
 
-    try {
+        try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      double? latitude = prefs.getDouble('latitude');
+      double? longitude = prefs.getDouble('longitude');
+      String? deviceId = prefs.getString('device_id');
+
       final requestBody = {
         'cid': _cid, // Use the consistent CID
-        'type': '1043',
-        'ln': _ln,
-        'lt': _lt,
-        'device_id': _deviceId,
+        'type': '1014',
+      'lt': latitude?.toString() ?? '1',
+        'ln': longitude?.toString() ?? '1',
+        'device_id': deviceId ?? '1'
       };
 
       final response = await http.post(
@@ -643,7 +662,7 @@ class ProductService extends ChangeNotifier {
       ).timeout(const Duration(seconds: 30));
 
       debugPrint('ProductService: Response from server for loadCategoriesFromApi: ${response.body}');
-      debugPrint('ProductService: Response Status Code (type=1043): ${response.statusCode}');
+      debugPrint('ProductService: Response Status Code (type=1014): ${response.statusCode}');
 
       _allCategories.clear();
 

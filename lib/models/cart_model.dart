@@ -108,8 +108,8 @@ class CartModel extends ChangeNotifier {
   Future<void>? _loadFuture;
   int? _cusId;
 
-  static const String _cartApiUrl = 'https://sgserp.in/erp/api/m_api/';
-  static const String _cid = '23262954';
+  static const String _cartApiUrl = 'https://erpsmart.in/total/api/m_api/';
+  static const String _cid = '85788578';
   static const String _ln = '322334';
   static const String _lt = '233432';
   static const String _deviceId = '122334';
@@ -154,41 +154,41 @@ class CartModel extends ChangeNotifier {
     debugPrint('🔄 _loadCartFromApi: Attempting to load cart for cus_id: $_cusId');
 
     try {
-      debugPrint('📡 Making API call with type: 2023 (Get cart details)');
-      final response2023 = await _callCartApi(
-        type: '2023',
+      debugPrint('📡 Making API call with type: 1023 (Get cart details)');
+      final response1023 = await _callCartApi(
+        type: '1023',
         productId: '0',
         productName: '',
       );
 
-      debugPrint('📥 Response for type 2023:');
-      debugPrint('  - Success: ${response2023['error'] == false}');
-      debugPrint('  - Error flag: ${response2023['error']}');
-      debugPrint('  - Has data: ${response2023['data'] is List}');
+      debugPrint('📥 Response for type 1023:');
+      debugPrint('  - Success: ${response1023['error'] == false}');
+      debugPrint('  - Error flag: ${response1023['error']}');
+      debugPrint('  - Has data: ${response1023['data'] is List}');
       
-      if (response2023['error'] == false && response2023['data'] is List) {
-        debugPrint('✅ Type 2023 API call successful, processing response...');
-        await _processApiResponse(response2023['data']);
+      if (response1023['error'] == false && response1023['data'] is List) {
+        debugPrint('✅ Type 1023 API call successful, processing response...');
+        await _processApiResponse(response1023['data']);
         return;
       } else {
-        debugPrint('⚠️ Type 2023 API failed or returned error, trying type 2011...');
+        debugPrint('⚠️ Type 1023 API failed or returned error, trying type 1026...');
       }
 
-      debugPrint('📡 Making API call with type: 2011 (Alternative cart API)');
-      final response2011 = await _callCartApi(
-        type: '2011',
+      debugPrint('📡 Making API call with type: 1026 (Alternative cart API)');
+      final response1026 = await _callCartApi(
+        type: '1026',
         productId: '0',
         productName: 'dummy',
         quantity: 0,
       );
 
-      debugPrint('📥 Response for type 2011:');
-      debugPrint('  - Error flag: ${response2011['error']}');
-      debugPrint('  - Has cart: ${response2011['cart'] is List}');
+      debugPrint('📥 Response for type 1026:');
+      debugPrint('  - Error flag: ${response1026['error']}');
+      debugPrint('  - Has cart: ${response1026['cart'] is List}');
       
-      if (response2011['error'] == 'false' && response2011['cart'] is List) {
-        debugPrint('✅ Type 2011 API call successful, processing response...');
-        await _processApiResponse(response2011['cart']);
+      if (response1026['error'] == 'false' && response1026  ['cart'] is List) {
+        debugPrint('✅ Type 1026 API call successful, processing response...');
+        await _processApiResponse(response1026['cart']);
       } else {
         debugPrint('❌ Both API types failed to load cart data');
       }
@@ -262,7 +262,7 @@ class CartModel extends ChangeNotifier {
     
     try {
       final response = await _callOrderApi(
-        type: '2020',
+        type: '1025',
         orderId: orderId,
       );
 
@@ -289,7 +289,7 @@ class CartModel extends ChangeNotifier {
     
     try {
       final response = await _callOrderApi(
-        type: '2021',
+        type: '1027',
         orderId: orderId,
       );
 
@@ -317,6 +317,9 @@ class CartModel extends ChangeNotifier {
     
     final prefs = await SharedPreferences.getInstance();
     final cusId = prefs.getInt('cus_id')?.toString() ?? '';
+    final latitude = prefs.getDouble('latitude');
+    final longitude = prefs.getDouble('longitude');
+    final deviceId = prefs.getString('device_id');
 
     debugPrint('  - Retrieved cus_id from SharedPreferences: $cusId');
 
@@ -328,9 +331,9 @@ class CartModel extends ChangeNotifier {
     final body = {
       'cid': _cid,
       'type': type,
-      'ln': '2324',
-      'lt': '23',
-      'device_id': '1223',
+      'lt': latitude?.toString() ?? '',
+      'ln': longitude?.toString() ?? '',
+      'device_id': deviceId ?? '',
       'cus_id': cusId,
     };
 
@@ -484,7 +487,7 @@ class CartModel extends ChangeNotifier {
       'cus_id': cusId,
     };
 
-    if (type == '2011' || type == '2012') {
+    if (type == '1022' || type == '1026') {
       body.addAll({
         'ln': _ln,
         'lt': _lt,
@@ -621,7 +624,7 @@ class CartModel extends ChangeNotifier {
 
       debugPrint('  - Making API call to add item to server cart...');
       final apiResponse = await _callCartApi(
-        type: '2011',
+        type: '1022',
         productId: cartItem.proId.toString(),
         productName: cartItem.title,
         quantity: cartItem.quantity,
@@ -668,7 +671,7 @@ class CartModel extends ChangeNotifier {
 
       debugPrint('  - Making API call to update quantity on server...');
       final response = await _callCartApi(
-        type: '2011',
+        type: '1022',
         productId: proId.toString(),
         productName: item.title,
         quantity: newQuantity,
@@ -731,7 +734,7 @@ class CartModel extends ChangeNotifier {
 
       debugPrint('  - Making API call to remove item from server cart...');
       final apiResponse = await _callCartApi(
-        type: '2012',
+        type: '1026',
         productId: proId.toString(),
         productName: item.title,
       );
@@ -775,7 +778,7 @@ class CartModel extends ChangeNotifier {
     // Clear cart from API
     debugPrint('  - Making API call to clear cart from server...');
     final apiResponse = await _callCartApi(
-      type: '2012',
+      type: '1026',
       productId: '0',
       productName: 'clear_all',
     );
