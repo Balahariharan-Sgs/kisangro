@@ -1,3 +1,4 @@
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:kisangro/login/secondscreen.dart';
@@ -28,6 +29,26 @@ class _splashscreenState extends State<splashscreen> {
     _checkLoginStatusAndNavigate();
   }
 
+  Future<void> _generateAndStoreFCMToken() async {
+    try {
+      FirebaseMessaging messaging = FirebaseMessaging.instance;
+
+      // Request permission (Android 13+ safety)
+      await messaging.requestPermission();
+
+      String? token = await messaging.getToken();
+
+      if (token != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('fcm_token', token);
+
+        debugPrint("🔥 FCM Token saved: $token");
+      }
+    } catch (e) {
+      debugPrint("FCM Token error: $e");
+    }
+  }
+
   Future<void> _checkLoginStatusAndNavigate() async {
     await Future.delayed(const Duration(seconds: 3));
 
@@ -37,16 +58,17 @@ class _splashscreenState extends State<splashscreen> {
 
     // ---------------- STORE LOCATION & DEVICE ID ----------------
     await _storeLocationAndDeviceId();
+    await _generateAndStoreFCMToken(); // ✅ ADD THIS
 
     try {
       debugPrint('SplashScreen: Starting to load product data...');
       await ProductService.loadProductsFromApi();
       await ProductService.loadCategoriesFromApi();
       debugPrint(
-          'SplashScreen: Product and Category data loaded successfully.');
+        'SplashScreen: Product and Category data loaded successfully.',
+      );
     } catch (e) {
-      debugPrint(
-          'SplashScreen: Failed to load product/category data: $e');
+      debugPrint('SplashScreen: Failed to load product/category data: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -64,8 +86,7 @@ class _splashscreenState extends State<splashscreen> {
 
     final prefs = await SharedPreferences.getInstance();
     final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
-    final hasUploadedLicenses =
-        prefs.getBool('hasUploadedLicenses') ?? false;
+    final hasUploadedLicenses = prefs.getBool('hasUploadedLicenses') ?? false;
 
     if (mounted) {
       if (isLoggedIn) {
@@ -96,8 +117,7 @@ class _splashscreenState extends State<splashscreen> {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) return;
 
-      LocationPermission permission =
-          await Geolocator.checkPermission();
+      LocationPermission permission = await Geolocator.checkPermission();
 
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
@@ -115,8 +135,7 @@ class _splashscreenState extends State<splashscreen> {
       await prefs.setDouble('latitude', position.latitude);
       await prefs.setDouble('longitude', position.longitude);
 
-      debugPrint(
-          'Location saved: ${position.latitude}, ${position.longitude}');
+      debugPrint('Location saved: ${position.latitude}, ${position.longitude}');
     } catch (e) {
       debugPrint('Location error: $e');
     }
@@ -169,10 +188,7 @@ class _splashscreenState extends State<splashscreen> {
           child: Container(
             height: isTablet ? screenSize.height * 0.5 : 192,
             width: isTablet ? screenSize.width * 0.4 : 149,
-            child: Image.asset(
-              "assets/logo.png",
-              fit: BoxFit.contain,
-            ),
+            child: Image.asset("assets/logo.png", fit: BoxFit.contain),
           ),
         ),
       ),

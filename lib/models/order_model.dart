@@ -101,7 +101,7 @@ class Order {
     required this.orderDate,
     this.deliveredDate,
     required this.status,
-    required this.paymentMethod,
+    required this.paymentMethod, String? paymentId,
   });
 
   void updateStatus(OrderStatus newStatus) {

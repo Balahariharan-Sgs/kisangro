@@ -120,6 +120,8 @@ Future<List<Map<String, dynamic>>> fetchAddresses(String cusId) async {
     if (response.statusCode == 200) {
       // Clean the response to remove any non-JSON prefix (warnings)
       String responseBody = response.body;
+      
+      debugPrint('address view response body: $responseBody');
 
       // Find the start of JSON object
       int startIndex = responseBody.indexOf('{');

@@ -27,8 +27,10 @@ class licence4 extends StatefulWidget {
 }
 
 class _licence4State extends State<licence4> {
-  final TextEditingController _insecticideLicenseController = TextEditingController();
-  final TextEditingController _fertilizerLicenseController = TextEditingController();
+  final TextEditingController _insecticideLicenseController =
+      TextEditingController();
+  final TextEditingController _fertilizerLicenseController =
+      TextEditingController();
 
   DateTime? _insecticideExpirationDate;
   DateTime? _fertilizerExpirationDate;
@@ -53,7 +55,10 @@ class _licence4State extends State<licence4> {
   );
 
   final List<RegExp> _datePatterns = [
-    RegExp(r'(?:Valid\s+upto|Valid\s+up\s+to|Expiry\s*Date)\s*:?\s*(\d{1,2}[\.\-\/]\d{1,2[\.\-\/]\d{4})', caseSensitive: false),
+    RegExp(
+      r'(?:Valid\s+upto|Valid\s+up\s+to|Expiry\s*Date)\s*:?\s*(\d{1,2}[\.\-\/]\d{1,2[\.\-\/]\d{4})',
+      caseSensitive: false,
+    ),
     RegExp(r'\b(\d{1,2}[\.\-\/]\d{1,2}[\.\-\/]\d{4})\b'),
     RegExp(r'\b(\d{4}[\.\-\/]\d{1,2}[\.\-\/]\d{1,2})\b'),
   ];
@@ -115,17 +120,19 @@ class _licence4State extends State<licence4> {
       final type = "1048";
       final id = _actualCustomerId!; // Use the actual customer ID
 
-      final response = await http.post(
-        Uri.parse(apiUrl),
-        body: {
-          'cid': cid,
-          'ln': ln,
-          'lt': lt,
-          'device_id': deviceId,
-          'type': type,
-          'id': id, // Use customer ID instead of hardcoded "116"
-        },
-      ).timeout(const Duration(seconds: 30));
+      final response = await http
+          .post(
+            Uri.parse(apiUrl),
+            body: {
+              'cid': cid,
+              'ln': ln,
+              'lt': lt,
+              'device_id': deviceId,
+              'type': type,
+              'id': id, // Use customer ID instead of hardcoded "116"
+            },
+          )
+          .timeout(const Duration(seconds: 30));
 
       debugPrint('License Retrieve Response Code: ${response.statusCode}');
       debugPrint('License Retrieve Raw Response: ${response.body}');
@@ -134,7 +141,8 @@ class _licence4State extends State<licence4> {
         final Map<String, dynamic> responseData = jsonDecode(response.body);
         debugPrint('License Retrieve API Response: $responseData');
 
-        if (responseData['status'] == 'success' && responseData['data'] != null) {
+        if (responseData['status'] == 'success' &&
+            responseData['data'] != null) {
           final List<dynamic> dataList = responseData['data'];
           if (dataList.isNotEmpty) {
             return dataList.first as Map<String, dynamic>;
@@ -148,25 +156,35 @@ class _licence4State extends State<licence4> {
   }
 
   Future<void> _loadExistingLicenseData() async {
-    final licenseProvider = Provider.of<LicenseProvider>(context, listen: false);
+    final licenseProvider = Provider.of<LicenseProvider>(
+      context,
+      listen: false,
+    );
 
     // Try to retrieve license data from API first
     final apiLicenseData = await _retrieveLicenseData();
     if (apiLicenseData != null) {
       setState(() {
         // Load pesticide license if available
-        if (apiLicenseData['pl_no'] != null && apiLicenseData['pl_no'].toString().isNotEmpty) {
-          _insecticideLicenseController.text = apiLicenseData['pl_no'].toString();
+        if (apiLicenseData['pl_no'] != null &&
+            apiLicenseData['pl_no'].toString().isNotEmpty) {
+          _insecticideLicenseController.text =
+              apiLicenseData['pl_no'].toString();
         }
 
         // Load fertilizer license if available
-        if (apiLicenseData['fl_no'] != null && apiLicenseData['fl_no'].toString().isNotEmpty) {
-          _fertilizerLicenseController.text = apiLicenseData['fl_no'].toString();
+        if (apiLicenseData['fl_no'] != null &&
+            apiLicenseData['fl_no'].toString().isNotEmpty) {
+          _fertilizerLicenseController.text =
+              apiLicenseData['fl_no'].toString();
         }
 
         // Parse expiry date if available
-        if (apiLicenseData['expire_date'] != null && apiLicenseData['expire_date'].toString().isNotEmpty) {
-          final expireDate = _parseDate(apiLicenseData['expire_date'].toString());
+        if (apiLicenseData['expire_date'] != null &&
+            apiLicenseData['expire_date'].toString().isNotEmpty) {
+          final expireDate = _parseDate(
+            apiLicenseData['expire_date'].toString(),
+          );
           if (expireDate != null) {
             _insecticideExpirationDate = expireDate;
             _fertilizerExpirationDate = expireDate;
@@ -174,7 +192,8 @@ class _licence4State extends State<licence4> {
         }
 
         // Handle PDF file if available
-        if (apiLicenseData['pdf_file_base64'] != null && apiLicenseData['pdf_file_base64'].toString().isNotEmpty) {
+        if (apiLicenseData['pdf_file_base64'] != null &&
+            apiLicenseData['pdf_file_base64'].toString().isNotEmpty) {
           try {
             final pdfBytes = base64Decode(apiLicenseData['pdf_file_base64']);
             _insecticideImageBytes = pdfBytes;
@@ -193,7 +212,8 @@ class _licence4State extends State<licence4> {
     if (pesticideData != null) {
       setState(() {
         if (_insecticideLicenseController.text.isEmpty) {
-          _insecticideLicenseController.text = pesticideData.licenseNumber ?? '';
+          _insecticideLicenseController.text =
+              pesticideData.licenseNumber ?? '';
         }
         _insecticideExpirationDate ??= pesticideData.expirationDate;
         _insecticideNoExpiry = pesticideData.noExpiry;
@@ -206,7 +226,8 @@ class _licence4State extends State<licence4> {
     if (fertilizerData != null) {
       setState(() {
         if (_fertilizerLicenseController.text.isEmpty) {
-          _fertilizerLicenseController.text = fertilizerData.licenseNumber ?? '';
+          _fertilizerLicenseController.text =
+              fertilizerData.licenseNumber ?? '';
         }
         _fertilizerExpirationDate ??= fertilizerData.expirationDate;
         _fertilizerNoExpiry = fertilizerData.noExpiry;
@@ -216,8 +237,12 @@ class _licence4State extends State<licence4> {
     }
   }
 
-  bool get _shouldShowPesticideSection => widget.licenseTypeToDisplay == 'pesticide' || widget.licenseTypeToDisplay == 'all';
-  bool get _shouldShowFertilizerSection => widget.licenseTypeToDisplay == 'fertilizer' || widget.licenseTypeToDisplay == 'all';
+  bool get _shouldShowPesticideSection =>
+      widget.licenseTypeToDisplay == 'pesticide' ||
+      widget.licenseTypeToDisplay == 'all';
+  bool get _shouldShowFertilizerSection =>
+      widget.licenseTypeToDisplay == 'fertilizer' ||
+      widget.licenseTypeToDisplay == 'all';
 
   bool get _isInsecticideSectionValid {
     return _insecticideLicenseController.text.isNotEmpty &&
@@ -255,7 +280,7 @@ class _licence4State extends State<licence4> {
   }) async {
     const String apiUrl = 'https://erpsmart.in/total/api/m_api/';
 
-   try {
+    try {
       final prefs = await SharedPreferences.getInstance();
 
       double? latitude = prefs.getDouble('latitude');
@@ -268,26 +293,30 @@ class _licence4State extends State<licence4> {
         'cid': cid,
         'cus_id': cusId,
         'type': '1011', // Pesticide license type
-         'lt': latitude?.toString() ?? '',
-          'ln': longitude?.toString() ?? '',
-          'device_id': deviceId ?? '',
+        'lt': latitude?.toString() ?? '1',
+        'ln': longitude?.toString() ?? '1',
+        'device_id': deviceId ?? '1',
         'pl_no': plNo,
         'expire_date': expireDate,
       });
 
       // Add file - always send as PDF
-      request.files.add(await http.MultipartFile.fromPath(
-        'photo',
-        photoFile.path,
-        contentType: MediaType.parse('application/pdf'),
-      ));
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'photo',
+          photoFile.path,
+          contentType: MediaType.parse('application/pdf'),
+        ),
+      );
 
       debugPrint("Pesticide API Request Fields: ${request.fields}");
       debugPrint("Pesticide API Upload File: ${photoFile.path}");
       debugPrint("Pesticide API Content Type: application/pdf");
 
       // Send request
-      final streamedResponse = await request.send().timeout(const Duration(seconds: 30));
+      final streamedResponse = await request.send().timeout(
+        const Duration(seconds: 30),
+      );
       final response = await http.Response.fromStream(streamedResponse);
 
       debugPrint('Pesticide Response Code: ${response.statusCode}');
@@ -314,7 +343,9 @@ class _licence4State extends State<licence4> {
           return false;
         }
       } else {
-        debugPrint('Pesticide API Error: Server returned ${response.statusCode}');
+        debugPrint(
+          'Pesticide API Error: Server returned ${response.statusCode}',
+        );
         return false;
       }
     } catch (e) {
@@ -323,7 +354,7 @@ class _licence4State extends State<licence4> {
     }
   }
 
-  // Fertilizer API call (type: 1020)
+  // Fertilizer API call (type: 1012)
   Future<bool> _uploadFertilizerLicense({
     required String cid,
     required String cusId,
@@ -334,12 +365,12 @@ class _licence4State extends State<licence4> {
     required File photoFile,
     required String expireDate,
   }) async {
-    const String apiUrl = 'https://sgserp.in/erp/api/m_api/';
+    const String apiUrl = 'https://erpsmart.in/total/api/m_api/';
 
     try {
       final request = http.MultipartRequest('POST', Uri.parse(apiUrl));
 
-      // Add fields for fertilizer API (type: 1020)
+      // Add fields for fertilizer API (type: 1012)
       request.fields.addAll({
         'cid': cid,
         'cus_id': cusId,
@@ -352,18 +383,22 @@ class _licence4State extends State<licence4> {
       });
 
       // Add file - always send as PDF
-      request.files.add(await http.MultipartFile.fromPath(
-        'photo',
-        photoFile.path,
-        contentType: MediaType.parse('application/pdf'),
-      ));
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'photo',
+          photoFile.path,
+          contentType: MediaType.parse('application/pdf'),
+        ),
+      );
 
       debugPrint("Fertilizer API Request Fields: ${request.fields}");
       debugPrint("Fertilizer API Upload File: ${photoFile.path}");
       debugPrint("Fertilizer API Content Type: application/pdf");
 
       // Send request
-      final streamedResponse = await request.send().timeout(const Duration(seconds: 30));
+      final streamedResponse = await request.send().timeout(
+        const Duration(seconds: 30),
+      );
       final response = await http.Response.fromStream(streamedResponse);
 
       debugPrint('Fertilizer Response Code: ${response.statusCode}');
@@ -390,7 +425,9 @@ class _licence4State extends State<licence4> {
           return false;
         }
       } else {
-        debugPrint('Fertilizer API Error: Server returned ${response.statusCode}');
+        debugPrint(
+          'Fertilizer API Error: Server returned ${response.statusCode}',
+        );
         return false;
       }
     } catch (e) {
@@ -400,7 +437,11 @@ class _licence4State extends State<licence4> {
   }
 
   // Helper method to create PDF file from image bytes if needed
-  Future<File> _createPdfFile(Uint8List bytes, bool isImage, String fileName) async {
+  Future<File> _createPdfFile(
+    Uint8List bytes,
+    bool isImage,
+    String fileName,
+  ) async {
     final tempDir = await getTemporaryDirectory();
     final file = File('${tempDir.path}/$fileName');
 
@@ -466,7 +507,9 @@ class _licence4State extends State<licence4> {
               onSurface: isDarkMode ? Colors.white : Colors.black,
             ),
             textButtonTheme: TextButtonThemeData(
-              style: TextButton.styleFrom(foregroundColor: const Color(0xffEB7720)),
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xffEB7720),
+              ),
             ),
           ),
           child: child!,
@@ -488,7 +531,8 @@ class _licence4State extends State<licence4> {
   }
 
   Future<void> _pickFile(bool isInsecticide) async {
-    final themeMode = Provider.of<ThemeModeProvider>(context, listen: false).themeMode;
+    final themeMode =
+        Provider.of<ThemeModeProvider>(context, listen: false).themeMode;
     final isDarkMode = themeMode == ThemeMode.dark;
     final Color textColor = isDarkMode ? Colors.white : Colors.black;
     final Color iconColor = const Color(0xffEB7720);
@@ -496,68 +540,85 @@ class _licence4State extends State<licence4> {
     try {
       showModalBottomSheet(
         context: context,
-        builder: (context) => SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: Icon(Icons.camera_alt, color: iconColor),
-                title: Text('Open Camera', style: GoogleFonts.poppins(color: textColor)),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final pickedFile = await ImagePicker().pickImage(
-                    source: ImageSource.camera,
-                    imageQuality: 85,
-                    maxWidth: 1024,
-                    maxHeight: 1024,
-                  );
-                  if (pickedFile != null) {
-                    await _processImageFile(pickedFile, isInsecticide);
-                  }
-                },
+        builder:
+            (context) => SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ListTile(
+                    leading: Icon(Icons.camera_alt, color: iconColor),
+                    title: Text(
+                      'Open Camera',
+                      style: GoogleFonts.poppins(color: textColor),
+                    ),
+                    onTap: () async {
+                      Navigator.pop(context);
+                      final pickedFile = await ImagePicker().pickImage(
+                        source: ImageSource.camera,
+                        imageQuality: 85,
+                        maxWidth: 1024,
+                        maxHeight: 1024,
+                      );
+                      if (pickedFile != null) {
+                        await _processImageFile(pickedFile, isInsecticide);
+                      }
+                    },
+                  ),
+                  ListTile(
+                    leading: Icon(Icons.photo_library, color: iconColor),
+                    title: Text(
+                      'Open Gallery',
+                      style: GoogleFonts.poppins(color: textColor),
+                    ),
+                    onTap: () async {
+                      Navigator.pop(context);
+                      final pickedFile = await ImagePicker().pickImage(
+                        source: ImageSource.gallery,
+                        imageQuality: 85,
+                        maxWidth: 1024,
+                        maxHeight: 1024,
+                      );
+                      if (pickedFile != null) {
+                        await _processImageFile(pickedFile, isInsecticide);
+                      }
+                    },
+                  ),
+                  ListTile(
+                    leading: Icon(Icons.picture_as_pdf, color: iconColor),
+                    title: Text(
+                      'Upload PDF',
+                      style: GoogleFonts.poppins(color: textColor),
+                    ),
+                    onTap: () async {
+                      Navigator.pop(context);
+                      final result = await FilePicker.platform.pickFiles(
+                        type: FileType.custom,
+                        allowedExtensions: ['pdf'],
+                      );
+                      if (result != null &&
+                          (result.files.single.bytes != null ||
+                              result.files.single.path != null)) {
+                        await _processPdfFile(
+                          result.files.single,
+                          isInsecticide,
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('No PDF selected. Please try again.'),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                ],
               ),
-              ListTile(
-                leading: Icon(Icons.photo_library, color: iconColor),
-                title: Text('Open Gallery', style: GoogleFonts.poppins(color: textColor)),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final pickedFile = await ImagePicker().pickImage(
-                    source: ImageSource.gallery,
-                    imageQuality: 85,
-                    maxWidth: 1024,
-                    maxHeight: 1024,
-                  );
-                  if (pickedFile != null) {
-                    await _processImageFile(pickedFile, isInsecticide);
-                  }
-                },
-              ),
-              ListTile(
-                leading: Icon(Icons.picture_as_pdf, color: iconColor),
-                title: Text('Upload PDF', style: GoogleFonts.poppins(color: textColor)),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final result = await FilePicker.platform.pickFiles(
-                    type: FileType.custom,
-                    allowedExtensions: ['pdf'],
-                  );
-                  if (result != null && (result.files.single.bytes != null || result.files.single.path != null)) {
-                    await _processPdfFile(result.files.single, isInsecticide);
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('No PDF selected. Please try again.')),
-                    );
-                  }
-                },
-              ),
-            ],
-          ),
-        ),
+            ),
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error opening file picker: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error opening file picker: $e')));
     }
   }
 
@@ -566,14 +627,20 @@ class _licence4State extends State<licence4> {
     try {
       final bytes = await imageFile.readAsBytes();
       final inputImage = InputImage.fromFilePath(imageFile.path);
-      final RecognizedText recognizedText = await _textRecognizer.processImage(inputImage);
+      final RecognizedText recognizedText = await _textRecognizer.processImage(
+        inputImage,
+      );
       final extractedText = recognizedText.text;
 
       Navigator.pop(context);
 
       if (extractedText.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No text found in the image. Please enter details manually.')),
+          const SnackBar(
+            content: Text(
+              'No text found in the image. Please enter details manually.',
+            ),
+          ),
         );
         setState(() {
           if (isInsecticide) {
@@ -592,7 +659,11 @@ class _licence4State extends State<licence4> {
     } catch (e) {
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error processing image: $e. Please enter details manually.')),
+        SnackBar(
+          content: Text(
+            'Error processing image: $e. Please enter details manually.',
+          ),
+        ),
       );
       try {
         final bytes = await imageFile.readAsBytes();
@@ -607,9 +678,9 @@ class _licence4State extends State<licence4> {
         });
         _checkFormValidity();
       } catch (e2) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error uploading image: $e2')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error uploading image: $e2')));
       }
     }
   }
@@ -629,14 +700,19 @@ class _licence4State extends State<licence4> {
       }
 
       final tempDir = await getTemporaryDirectory();
-      tempFile = File('${tempDir.path}/${file.name?.replaceAll(RegExp(r'[^\w\.]'), '_') ?? 'temp_pdf.pdf'}');
+      tempFile = File(
+        '${tempDir.path}/${file.name?.replaceAll(RegExp(r'[^\w\.]'), '_') ?? 'temp_pdf.pdf'}',
+      );
       await tempFile.writeAsBytes(bytes);
 
       final PdfDocument document = PdfDocument(inputBytes: bytes);
       final PdfTextExtractor extractor = PdfTextExtractor(document);
       final StringBuffer textBuffer = StringBuffer();
       for (int i = 0; i < document.pages.count; i++) {
-        final pageText = extractor.extractText(startPageIndex: i, endPageIndex: i);
+        final pageText = extractor.extractText(
+          startPageIndex: i,
+          endPageIndex: i,
+        );
         textBuffer.writeln(pageText);
       }
       final extractedText = textBuffer.toString();
@@ -648,7 +724,11 @@ class _licence4State extends State<licence4> {
 
       if (extractedText.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No text found in the PDF. Please enter details manually.')),
+          const SnackBar(
+            content: Text(
+              'No text found in the PDF. Please enter details manually.',
+            ),
+          ),
         );
         setState(() {
           if (isInsecticide) {
@@ -667,7 +747,11 @@ class _licence4State extends State<licence4> {
     } catch (e) {
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error processing PDF: $e. Please enter details manually.')),
+        SnackBar(
+          content: Text(
+            'Error processing PDF: $e. Please enter details manually.',
+          ),
+        ),
       );
       try {
         Uint8List bytes;
@@ -689,9 +773,9 @@ class _licence4State extends State<licence4> {
         });
         _checkFormValidity();
       } catch (e2) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error uploading PDF: $e2')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error uploading PDF: $e2')));
       }
     } finally {
       if (tempFile != null && await tempFile.exists()) {
@@ -701,7 +785,8 @@ class _licence4State extends State<licence4> {
   }
 
   void _showProcessingDialog(String message) {
-    final themeMode = Provider.of<ThemeModeProvider>(context, listen: false).themeMode;
+    final themeMode =
+        Provider.of<ThemeModeProvider>(context, listen: false).themeMode;
     final isDarkMode = themeMode == ThemeMode.dark;
     final Color dialogBgColor = isDarkMode ? Colors.grey[850]! : Colors.white;
     final Color textColor = isDarkMode ? Colors.white : Colors.black;
@@ -710,25 +795,35 @@ class _licence4State extends State<licence4> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        backgroundColor: dialogBgColor,
-        content: Row(
-          children: [
-            CircularProgressIndicator(color: indicatorColor),
-            const SizedBox(width: 20),
-            Text(message, style: GoogleFonts.poppins(color: textColor)),
-          ],
-        ),
-      ),
+      builder:
+          (context) => AlertDialog(
+            backgroundColor: dialogBgColor,
+            content: Row(
+              children: [
+                CircularProgressIndicator(color: indicatorColor),
+                const SizedBox(width: 20),
+                Text(message, style: GoogleFonts.poppins(color: textColor)),
+              ],
+            ),
+          ),
     );
   }
 
-  Future<void> _extractLicenseData(String extractedText, bool isInsecticide, Uint8List bytes, bool isImage) async {
+  Future<void> _extractLicenseData(
+    String extractedText,
+    bool isInsecticide,
+    Uint8List bytes,
+    bool isImage,
+  ) async {
     String? licenseNumber;
     String? expiryDateStr;
     bool isPermanent = false;
 
-    final cleanText = extractedText.replaceAll('\n', ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+    final cleanText =
+        extractedText
+            .replaceAll('\n', ' ')
+            .replaceAll(RegExp(r'\s+'), ' ')
+            .trim();
     debugPrint('Extracted text (cleaned): "$cleanText"');
 
     final licenseMatch = _licenseNumberRegExp.firstMatch(cleanText);
@@ -737,7 +832,10 @@ class _licence4State extends State<licence4> {
       debugPrint('License Number extracted: "$licenseNumber"');
     } else {
       debugPrint('No License Number found using generic regex.');
-      final fallbackMatch = RegExp(r'\b[A-Z0-9]{3,}[A-Z0-9\s\/\-\.]*\b', caseSensitive: false).firstMatch(cleanText);
+      final fallbackMatch = RegExp(
+        r'\b[A-Z0-9]{3,}[A-Z0-9\s\/\-\.]*\b',
+        caseSensitive: false,
+      ).firstMatch(cleanText);
       if (fallbackMatch != null) {
         licenseNumber = fallbackMatch.group(0)?.trim();
         debugPrint('Fallback License Number extracted: "$licenseNumber"');
@@ -753,9 +851,12 @@ class _licence4State extends State<licence4> {
         final match = pattern.firstMatch(cleanText);
         if (match != null) {
           String matchedDate = match.group(1) ?? match.group(0)!;
-          if (!(cleanText.contains('date of grant of licence') && cleanText.contains(matchedDate))) {
+          if (!(cleanText.contains('date of grant of licence') &&
+              cleanText.contains(matchedDate))) {
             expiryDateStr = matchedDate;
-            debugPrint('Expiry Date extracted: "$expiryDateStr" using pattern: "${pattern.pattern}"');
+            debugPrint(
+              'Expiry Date extracted: "$expiryDateStr" using pattern: "${pattern.pattern}"',
+            );
             break;
           }
         }
@@ -771,17 +872,22 @@ class _licence4State extends State<licence4> {
         _insecticideIsImage = isImage;
         _insecticideLicenseController.text = licenseNumber ?? '';
         _insecticideNoExpiry = isPermanent;
-        _insecticideExpirationDate = isPermanent ? null : _parseDate(expiryDateStr ?? '');
+        _insecticideExpirationDate =
+            isPermanent ? null : _parseDate(expiryDateStr ?? '');
       } else {
         _fertilizerImageBytes = bytes;
         _fertilizerIsImage = isImage;
         _fertilizerLicenseController.text = licenseNumber ?? '';
         _fertilizerNoExpiry = isPermanent;
-        _fertilizerExpirationDate = isPermanent ? null : _parseDate(expiryDateStr ?? '');
+        _fertilizerExpirationDate =
+            isPermanent ? null : _parseDate(expiryDateStr ?? '');
       }
     });
 
-    final licenseProvider = Provider.of<LicenseProvider>(context, listen: false);
+    final licenseProvider = Provider.of<LicenseProvider>(
+      context,
+      listen: false,
+    );
     if (isInsecticide) {
       await licenseProvider.setPesticideLicense(
         imageBytes: _insecticideImageBytes,
@@ -789,7 +895,14 @@ class _licence4State extends State<licence4> {
         licenseNumber: _insecticideLicenseController.text,
         expirationDate: _insecticideExpirationDate,
         noExpiry: _insecticideNoExpiry,
-        displayDate: _insecticideNoExpiry ? 'Permanent' : (_insecticideExpirationDate != null ? DateFormat('dd/MM/yyyy').format(_insecticideExpirationDate!) : null),
+        displayDate:
+            _insecticideNoExpiry
+                ? 'Permanent'
+                : (_insecticideExpirationDate != null
+                    ? DateFormat(
+                      'dd/MM/yyyy',
+                    ).format(_insecticideExpirationDate!)
+                    : null),
       );
     } else {
       await licenseProvider.setFertilizerLicense(
@@ -798,7 +911,14 @@ class _licence4State extends State<licence4> {
         licenseNumber: _fertilizerLicenseController.text,
         expirationDate: _fertilizerExpirationDate,
         noExpiry: _fertilizerNoExpiry,
-        displayDate: _fertilizerNoExpiry ? 'Permanent' : (_fertilizerExpirationDate != null ? DateFormat('dd/MM/yyyy').format(_fertilizerExpirationDate!) : null),
+        displayDate:
+            _fertilizerNoExpiry
+                ? 'Permanent'
+                : (_fertilizerExpirationDate != null
+                    ? DateFormat(
+                      'dd/MM/yyyy',
+                    ).format(_fertilizerExpirationDate!)
+                    : null),
       );
     }
 
@@ -813,22 +933,27 @@ class _licence4State extends State<licence4> {
     if (isPermanent) {
       message += 'Validity: Permanent';
     } else if (expiryDateStr != null && _parseDate(expiryDateStr) != null) {
-      message += 'Expiry: ${DateFormat('dd/MM/yyyy').format(_parseDate(expiryDateStr)!)}';
+      message +=
+          'Expiry: ${DateFormat('dd/MM/yyyy').format(_parseDate(expiryDateStr)!)}';
     } else {
       message += 'Expiry date could not be extracted.';
     }
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        duration: const Duration(seconds: 1),
-      ),
+      SnackBar(content: Text(message), duration: const Duration(seconds: 1)),
     );
   }
 
   DateTime? _parseDate(String dateStr) {
     String cleanDate = dateStr.replaceAll(RegExp(r'[^\d\.\-\/]'), '');
-    List<String> formats = ['dd.MM.yyyy', 'dd-MM.yyyy', 'dd/MM/yyyy', 'yyyy.MM.dd', 'yyyy-MM-dd', 'yyyy/MM/dd'];
+    List<String> formats = [
+      'dd.MM.yyyy',
+      'dd-MM.yyyy',
+      'dd/MM/yyyy',
+      'yyyy.MM.dd',
+      'yyyy-MM-dd',
+      'yyyy/MM/dd',
+    ];
 
     for (String format in formats) {
       try {
@@ -858,21 +983,28 @@ class _licence4State extends State<licence4> {
     final themeMode = Provider.of<ThemeModeProvider>(context).themeMode;
     final isDarkMode = themeMode == ThemeMode.dark;
 
-    final Color backgroundColor = isDarkMode ? Colors.black : const Color(0xffFFD9BD);
+    final Color backgroundColor =
+        isDarkMode ? Colors.black : const Color(0xffFFD9BD);
     final Color appBarColor = const Color(0xffEB7720);
     final Color appBarIconColor = Colors.white;
     final Color appBarTextColor = Colors.white;
     final Color textColor = isDarkMode ? Colors.white : Colors.black87;
     final Color orangeColor = const Color(0xffEB7720);
     final Color inputFillColor = isDarkMode ? Colors.grey[800]! : Colors.white;
-    final Color inputHintColor = isDarkMode ? Colors.grey[400]! : Colors.black87;
+    final Color inputHintColor =
+        isDarkMode ? Colors.grey[400]! : Colors.black87;
     final Color inputBorderColor = const Color(0xffEB7720);
     final Color inputFocusedBorderColor = const Color(0xffEB7720);
     final Color checkboxActiveColor = const Color(0xffEB7720);
-    final Color checkboxUncheckedColor = isDarkMode ? Colors.grey[400]! : Colors.black;
-    final Color imageContainerBg = isDarkMode ? Colors.grey[800]! : Colors.white;
+    final Color checkboxUncheckedColor =
+        isDarkMode ? Colors.grey[400]! : Colors.black;
+    final Color imageContainerBg =
+        isDarkMode ? Colors.grey[800]! : Colors.white;
     final Color imageContainerBorder = const Color(0xffEB7720);
-    final Color noteTextColor = isDarkMode ? Colors.white.withOpacity(0.7) : Colors.black87.withOpacity(0.7);
+    final Color noteTextColor =
+        isDarkMode
+            ? Colors.white.withOpacity(0.7)
+            : Colors.black87.withOpacity(0.7);
 
     return Scaffold(
       backgroundColor: backgroundColor,
@@ -884,7 +1016,10 @@ class _licence4State extends State<licence4> {
         backgroundColor: appBarColor,
         title: Transform.translate(
           offset: const Offset(-25, 0),
-          child: Text("Upload License", style: GoogleFonts.poppins(color: appBarTextColor, fontSize: 18)),
+          child: Text(
+            "Upload License",
+            style: GoogleFonts.poppins(color: appBarTextColor, fontSize: 18),
+          ),
         ),
         iconTheme: const IconThemeData(color: Colors.white),
         elevation: 0,
@@ -902,109 +1037,209 @@ class _licence4State extends State<licence4> {
             ],
           ),
         ),
-        child: _isLoading
-            ? Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(color: orangeColor),
-              const SizedBox(height: 20),
-              Text('Processing file...', style: GoogleFonts.poppins(color: textColor)),
-            ],
-          ),
-        )
-            : SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 30),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Step 2/2',
-                style: GoogleFonts.poppins(
-                  color: orangeColor,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 20),
+        child:
+            _isLoading
+                ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircularProgressIndicator(color: orangeColor),
+                      const SizedBox(height: 20),
+                      Text(
+                        'Processing file...',
+                        style: GoogleFonts.poppins(color: textColor),
+                      ),
+                    ],
+                  ),
+                )
+                : SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24.0,
+                    vertical: 30,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Step 2/2',
+                        style: GoogleFonts.poppins(
+                          color: orangeColor,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
 
-              if (showPesticideSection)
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildImageUpload("Upload Pesticide License Document", _insecticideImageBytes, _insecticideIsImage, () => _pickFile(true), isDarkMode, imageContainerBg, imageContainerBorder, orangeColor, noteTextColor, textColor),
-                    const SizedBox(height: 20),
-                    Text("Pesticide License Number", style: GoogleFonts.poppins(color: textColor, fontSize: 14)),
-                    const SizedBox(height: 8),
-                    _buildTextField(_insecticideLicenseController, "Enter Pesticide License Number", inputFillColor, inputHintColor, inputBorderColor, inputFocusedBorderColor),
-                    const SizedBox(height: 20),
-                    _buildDatePicker("Expiration Date", _insecticideExpirationDate, _insecticideNoExpiry, () => _pickDate(context, true), (value) {
-                      setState(() {
-                        _insecticideNoExpiry = value!;
-                        if (value) {
-                          _insecticideExpirationDate = null;
-                        }
-                      });
-                      _checkFormValidity();
-                    }, textColor, inputFillColor, inputHintColor, inputBorderColor, inputFocusedBorderColor, checkboxActiveColor, checkboxUncheckedColor),
-                    const SizedBox(height: 30),
-                  ],
-                ),
+                      if (showPesticideSection)
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildImageUpload(
+                              "Upload Pesticide License Document",
+                              _insecticideImageBytes,
+                              _insecticideIsImage,
+                              () => _pickFile(true),
+                              isDarkMode,
+                              imageContainerBg,
+                              imageContainerBorder,
+                              orangeColor,
+                              noteTextColor,
+                              textColor,
+                            ),
+                            const SizedBox(height: 20),
+                            Text(
+                              "Pesticide License Number",
+                              style: GoogleFonts.poppins(
+                                color: textColor,
+                                fontSize: 14,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            _buildTextField(
+                              _insecticideLicenseController,
+                              "Enter Pesticide License Number",
+                              inputFillColor,
+                              inputHintColor,
+                              inputBorderColor,
+                              inputFocusedBorderColor,
+                            ),
+                            const SizedBox(height: 20),
+                            _buildDatePicker(
+                              "Expiration Date",
+                              _insecticideExpirationDate,
+                              _insecticideNoExpiry,
+                              () => _pickDate(context, true),
+                              (value) {
+                                setState(() {
+                                  _insecticideNoExpiry = value!;
+                                  if (value) {
+                                    _insecticideExpirationDate = null;
+                                  }
+                                });
+                                _checkFormValidity();
+                              },
+                              textColor,
+                              inputFillColor,
+                              inputHintColor,
+                              inputBorderColor,
+                              inputFocusedBorderColor,
+                              checkboxActiveColor,
+                              checkboxUncheckedColor,
+                            ),
+                            const SizedBox(height: 30),
+                          ],
+                        ),
 
-              if (showFertilizerSection)
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildImageUpload("Upload Fertilizer License Document", _fertilizerImageBytes, _fertilizerIsImage, () => _pickFile(false), isDarkMode, imageContainerBg, imageContainerBorder, orangeColor, noteTextColor, textColor),
-                    const SizedBox(height: 20),
-                    Text("Fertilizer License Number", style: GoogleFonts.poppins(color: textColor, fontSize: 14)),
-                    const SizedBox(height: 8),
-                    _buildTextField(_fertilizerLicenseController, "Enter Fertilizer License Number", inputFillColor, inputHintColor, inputBorderColor, inputFocusedBorderColor),
-                    const SizedBox(height: 20),
-                    _buildDatePicker("Expiration Date", _fertilizerExpirationDate, _fertilizerNoExpiry, () => _pickDate(context, false), (value) {
-                      setState(() {
-                        _fertilizerNoExpiry = value!;
-                        if (value) {
-                          _fertilizerExpirationDate = null;
-                        }
-                      });
-                      _checkFormValidity();
-                    }, textColor, inputFillColor, inputHintColor, inputBorderColor, inputFocusedBorderColor, checkboxActiveColor, checkboxUncheckedColor),
-                    const SizedBox(height: 30),
-                  ],
-                ),
+                      if (showFertilizerSection)
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildImageUpload(
+                              "Upload Fertilizer License Document",
+                              _fertilizerImageBytes,
+                              _fertilizerIsImage,
+                              () => _pickFile(false),
+                              isDarkMode,
+                              imageContainerBg,
+                              imageContainerBorder,
+                              orangeColor,
+                              noteTextColor,
+                              textColor,
+                            ),
+                            const SizedBox(height: 20),
+                            Text(
+                              "Fertilizer License Number",
+                              style: GoogleFonts.poppins(
+                                color: textColor,
+                                fontSize: 14,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            _buildTextField(
+                              _fertilizerLicenseController,
+                              "Enter Fertilizer License Number",
+                              inputFillColor,
+                              inputHintColor,
+                              inputBorderColor,
+                              inputFocusedBorderColor,
+                            ),
+                            const SizedBox(height: 20),
+                            _buildDatePicker(
+                              "Expiration Date",
+                              _fertilizerExpirationDate,
+                              _fertilizerNoExpiry,
+                              () => _pickDate(context, false),
+                              (value) {
+                                setState(() {
+                                  _fertilizerNoExpiry = value!;
+                                  if (value) {
+                                    _fertilizerExpirationDate = null;
+                                  }
+                                });
+                                _checkFormValidity();
+                              },
+                              textColor,
+                              inputFillColor,
+                              inputHintColor,
+                              inputBorderColor,
+                              inputFocusedBorderColor,
+                              checkboxActiveColor,
+                              checkboxUncheckedColor,
+                            ),
+                            const SizedBox(height: 30),
+                          ],
+                        ),
 
-              if (_errorMessage != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 16.0),
-                  child: Text(
-                    _errorMessage!,
-                    style: GoogleFonts.poppins(color: Colors.red),
+                      if (_errorMessage != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 16.0),
+                          child: Text(
+                            _errorMessage!,
+                            style: GoogleFonts.poppins(color: Colors.red),
+                          ),
+                        ),
+
+                      Center(
+                        child: ElevatedButton(
+                          onPressed: isFormValid ? _submitForm : null,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: orangeColor,
+                            disabledBackgroundColor: orangeColor.withOpacity(
+                              0.5,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            minimumSize: const Size(200, 50),
+                          ),
+                          child: Text(
+                            'Submit',
+                            style: GoogleFonts.poppins(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-
-              Center(
-                child: ElevatedButton(
-                  onPressed: isFormValid ? _submitForm : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: orangeColor,
-                    disabledBackgroundColor: orangeColor.withOpacity(0.5),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    minimumSize: const Size(200, 50),
-                  ),
-                  child: Text(
-                    'Submit',
-                    style: GoogleFonts.poppins(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
 
-  Widget _buildImageUpload(String title, Uint8List? imageBytes, bool isImage, VoidCallback onTap, bool isDarkMode, Color containerBg, Color borderColor, Color iconColor, Color noteColor, Color textColor) {
+  Widget _buildImageUpload(
+    String title,
+    Uint8List? imageBytes,
+    bool isImage,
+    VoidCallback onTap,
+    bool isDarkMode,
+    Color containerBg,
+    Color borderColor,
+    Color iconColor,
+    Color noteColor,
+    Color textColor,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1020,35 +1255,65 @@ class _licence4State extends State<licence4> {
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: borderColor, width: 1),
             ),
-            child: imageBytes == null
-                ? Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.cloud_upload, size: 40, color: iconColor),
-                const SizedBox(height: 8),
-                Text('Upload Document', style: GoogleFonts.poppins(color: textColor, fontSize: 14)),
-                Text('(PDF or Image)', style: GoogleFonts.poppins(color: noteColor, fontSize: 12)),
-              ],
-            )
-                : isImage
-                ? Image.memory(imageBytes, fit: BoxFit.cover)
-                : Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.picture_as_pdf, size: 40, color: iconColor),
-                  const SizedBox(height: 8),
-                  Text('PDF Document', style: GoogleFonts.poppins(color: textColor, fontSize: 14)),
-                ],
-              ),
-            ),
+            child:
+                imageBytes == null
+                    ? Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.cloud_upload, size: 40, color: iconColor),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Upload Document',
+                          style: GoogleFonts.poppins(
+                            color: textColor,
+                            fontSize: 14,
+                          ),
+                        ),
+                        Text(
+                          '(PDF or Image)',
+                          style: GoogleFonts.poppins(
+                            color: noteColor,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    )
+                    : isImage
+                    ? Image.memory(imageBytes, fit: BoxFit.cover)
+                    : Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.picture_as_pdf,
+                            size: 40,
+                            color: iconColor,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'PDF Document',
+                            style: GoogleFonts.poppins(
+                              color: textColor,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildTextField(TextEditingController controller, String hintText, Color fillColor, Color hintColor, Color borderColor, Color focusedBorderColor) {
+  Widget _buildTextField(
+    TextEditingController controller,
+    String hintText,
+    Color fillColor,
+    Color hintColor,
+    Color borderColor,
+    Color focusedBorderColor,
+  ) {
     return TextField(
       controller: controller,
       style: GoogleFonts.poppins(fontSize: 14),
@@ -1057,7 +1322,10 @@ class _licence4State extends State<licence4> {
         fillColor: fillColor,
         hintText: hintText,
         hintStyle: GoogleFonts.poppins(color: hintColor),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 12,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: BorderSide(color: borderColor),
@@ -1070,24 +1338,45 @@ class _licence4State extends State<licence4> {
     );
   }
 
-  Widget _buildDatePicker(String title, DateTime? selectedDate, bool noExpiry, VoidCallback onTap, Function(bool?)? onCheckboxChanged, Color textColor, Color fillColor, Color hintColor, Color borderColor, Color focusedBorderColor, Color checkboxActiveColor, Color checkboxUncheckedColor) {
+  Widget _buildDatePicker(
+    String title,
+    DateTime? selectedDate,
+    bool noExpiry,
+    VoidCallback onTap,
+    Function(bool?)? onCheckboxChanged,
+    Color textColor,
+    Color fillColor,
+    Color hintColor,
+    Color borderColor,
+    Color focusedBorderColor,
+    Color checkboxActiveColor,
+    Color checkboxUncheckedColor,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
             Expanded(
-              child: Text(title, style: GoogleFonts.poppins(color: textColor, fontSize: 14)),
+              child: Text(
+                title,
+                style: GoogleFonts.poppins(color: textColor, fontSize: 14),
+              ),
             ),
             Row(
               children: [
-                Text('No Expiry', style: GoogleFonts.poppins(color: textColor, fontSize: 14)),
+                Text(
+                  'No Expiry',
+                  style: GoogleFonts.poppins(color: textColor, fontSize: 14),
+                ),
                 Checkbox(
                   value: noExpiry,
                   onChanged: onCheckboxChanged,
                   activeColor: checkboxActiveColor,
                   checkColor: Colors.white,
-                  fillColor: MaterialStateProperty.resolveWith<Color>((Set<MaterialState> states) {
+                  fillColor: MaterialStateProperty.resolveWith<Color>((
+                    Set<MaterialState> states,
+                  ) {
                     if (states.contains(MaterialState.selected)) {
                       return checkboxActiveColor;
                     }
@@ -1112,9 +1401,16 @@ class _licence4State extends State<licence4> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  noExpiry ? 'Permanent' : (selectedDate != null ? DateFormat('dd/MM/yyyy').format(selectedDate) : 'Select Date'),
+                  noExpiry
+                      ? 'Permanent'
+                      : (selectedDate != null
+                          ? DateFormat('dd/MM/yyyy').format(selectedDate)
+                          : 'Select Date'),
                   style: GoogleFonts.poppins(
-                    color: noExpiry ? hintColor : (selectedDate != null ? textColor : hintColor),
+                    color:
+                        noExpiry
+                            ? hintColor
+                            : (selectedDate != null ? textColor : hintColor),
                     fontSize: 14,
                   ),
                 ),
@@ -1137,7 +1433,10 @@ class _licence4State extends State<licence4> {
       _errorMessage = null;
     });
 
-    final licenseProvider = Provider.of<LicenseProvider>(context, listen: false);
+    final licenseProvider = Provider.of<LicenseProvider>(
+      context,
+      listen: false,
+    );
 
     // Get the actual customer ID if not already loaded
     if (_actualCustomerId == null) {
@@ -1148,7 +1447,8 @@ class _licence4State extends State<licence4> {
     if (_actualCustomerId == null) {
       setState(() {
         _isLoading = false;
-        _errorMessage = 'Unable to retrieve customer information. Please try again.';
+        _errorMessage =
+            'Unable to retrieve customer information. Please try again.';
       });
       return;
     }
@@ -1165,8 +1465,15 @@ class _licence4State extends State<licence4> {
     // Upload pesticide license if applicable
     if (_shouldShowPesticideSection && _isInsecticideSectionValid) {
       try {
-        final File pdfFile = await _createPdfFile(_insecticideImageBytes!, _insecticideIsImage, 'pesticide_license.pdf');
-        final String expireDate = _insecticideNoExpiry ? 'Permanent' : DateFormat('yyyy-MM-dd').format(_insecticideExpirationDate!);
+        final File pdfFile = await _createPdfFile(
+          _insecticideImageBytes!,
+          _insecticideIsImage,
+          'pesticide_license.pdf',
+        );
+        final String expireDate =
+            _insecticideNoExpiry
+                ? 'Permanent'
+                : DateFormat('yyyy-MM-dd').format(_insecticideExpirationDate!);
 
         pesticideSuccess = await _uploadPesticideLicense(
           cid: "85788578",
@@ -1186,7 +1493,14 @@ class _licence4State extends State<licence4> {
             licenseNumber: _insecticideLicenseController.text,
             expirationDate: _insecticideExpirationDate,
             noExpiry: _insecticideNoExpiry,
-            displayDate: _insecticideNoExpiry ? 'Permanent' : (_insecticideExpirationDate != null ? DateFormat('dd/MM/yyyy').format(_insecticideExpirationDate!) : null),
+            displayDate:
+                _insecticideNoExpiry
+                    ? 'Permanent'
+                    : (_insecticideExpirationDate != null
+                        ? DateFormat(
+                          'dd/MM/yyyy',
+                        ).format(_insecticideExpirationDate!)
+                        : null),
           );
         }
       } catch (e) {
@@ -1198,13 +1512,20 @@ class _licence4State extends State<licence4> {
     // Upload fertilizer license if applicable
     if (_shouldShowFertilizerSection && _isFertilizerSectionValid) {
       try {
-        final File pdfFile = await _createPdfFile(_fertilizerImageBytes!, _fertilizerIsImage, 'fertilizer_license.pdf');
-        final String expireDate = _fertilizerNoExpiry ? 'Permanent' : DateFormat('yyyy-MM-dd').format(_fertilizerExpirationDate!);
+        final File pdfFile = await _createPdfFile(
+          _fertilizerImageBytes!,
+          _fertilizerIsImage,
+          'fertilizer_license.pdf',
+        );
+        final String expireDate =
+            _fertilizerNoExpiry
+                ? 'Permanent'
+                : DateFormat('yyyy-MM-dd').format(_fertilizerExpirationDate!);
 
         fertilizerSuccess = await _uploadFertilizerLicense(
           cid: "85788578",
           cusId: _actualCustomerId!, // Use actual customer ID
-           ln: latitude?.toString() ?? '',
+          ln: latitude?.toString() ?? '',
           lt: longitude?.toString() ?? '',
           deviceId: deviceId ?? '',
           flNo: _fertilizerLicenseController.text,
@@ -1219,7 +1540,14 @@ class _licence4State extends State<licence4> {
             licenseNumber: _fertilizerLicenseController.text,
             expirationDate: _fertilizerExpirationDate,
             noExpiry: _fertilizerNoExpiry,
-            displayDate: _fertilizerNoExpiry ? 'Permanent' : (_fertilizerExpirationDate != null ? DateFormat('dd/MM/yyyy').format(_fertilizerExpirationDate!) : null),
+            displayDate:
+                _fertilizerNoExpiry
+                    ? 'Permanent'
+                    : (_fertilizerExpirationDate != null
+                        ? DateFormat(
+                          'dd/MM/yyyy',
+                        ).format(_fertilizerExpirationDate!)
+                        : null),
           );
         }
       } catch (e) {
@@ -1232,10 +1560,11 @@ class _licence4State extends State<licence4> {
       _isLoading = false;
     });
 
-    if ((!_shouldShowPesticideSection || pesticideSuccess) && (!_shouldShowFertilizerSection || fertilizerSuccess)) {
+    if ((!_shouldShowPesticideSection || pesticideSuccess) &&
+        (!_shouldShowFertilizerSection || fertilizerSuccess)) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) =>  KycSplashScreen()),
+        MaterialPageRoute(builder: (context) => KycSplashScreen()),
       );
     } else {
       setState(() {

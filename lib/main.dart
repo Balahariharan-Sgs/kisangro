@@ -13,12 +13,13 @@ import 'package:kisangro/models/license_provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:kisangro/home/notification_manager.dart';
 import 'package:kisangro/home/noti.dart';
-
+import 'package:firebase_core/firebase_core.dart';
 import 'common/common_app_bar.dart';
 import 'home/theme_mode_provider.dart';
 
-void main() {
+void main() async {                            // ✅ make async
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
 
   runApp(
     MultiProvider(

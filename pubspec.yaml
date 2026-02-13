@@ -49,6 +49,12 @@ dependencies:
   syncfusion_flutter_pdfviewer: ^32.1.22
   syncfusion_flutter_signaturepad: ^32.1.22
   file_picker: ^8.0.6
+  firebase_core: ^4.4.0
+  firebase_messaging: ^16.1.1
+
+
+
+
 
   # UI & UX
   carousel_slider: ^5.0.0

@@ -11,10 +11,13 @@ import 'package:kisangro/models/deal_model.dart'; // NEW: Import deal_model.dart
 import 'package:collection/collection.dart'; // Import for firstWhereOrNull
 
 class ProductService extends ChangeNotifier {
-  static List<Product> _allProducts = []; // Stores all unique products (by their generated ID)
+  static List<Product> _allProducts =
+      []; // Stores all unique products (by their generated ID)
   static List<Map<String, String>> _allCategories = [];
-  static List<String> _validImageUrls = []; // List to store valid API image URLs
-  static final Random _random = Random(); // Random instance for selecting image URLs
+  static List<String> _validImageUrls =
+      []; // List to store valid API image URLs
+  static final Random _random =
+      Random(); // Random instance for selecting image URLs
 
   // NEW: Wishlist variables
   static List<String> _wishlistProductIds = [];
@@ -38,7 +41,9 @@ class ProductService extends ChangeNotifier {
       final wishlistJson = prefs.getString(_wishlistKey);
       if (wishlistJson != null) {
         _wishlistProductIds = List<String>.from(json.decode(wishlistJson));
-        debugPrint('ProductService: Loaded ${_wishlistProductIds.length} items from wishlist');
+        debugPrint(
+          'ProductService: Loaded ${_wishlistProductIds.length} items from wishlist',
+        );
       }
     } catch (e) {
       debugPrint('ProductService: Error loading wishlist: $e');
@@ -80,11 +85,15 @@ class ProductService extends ChangeNotifier {
 
   // NEW: Get all wishlist products
   static List<Product> getWishlistProducts() {
-    return _allProducts.where((product) =>
-    _wishlistProductIds.contains(product.mainProductId) ||
-        product.availableSizes.any((size) =>
-            _wishlistProductIds.contains(size.proId.toString()))
-    ).toList();
+    return _allProducts
+        .where(
+          (product) =>
+              _wishlistProductIds.contains(product.mainProductId) ||
+              product.availableSizes.any(
+                (size) => _wishlistProductIds.contains(size.proId.toString()),
+              ),
+        )
+        .toList();
   }
 
   // NEW: Toggle product in wishlist
@@ -122,15 +131,20 @@ class ProductService extends ChangeNotifier {
       final productsJson = _allProducts.map((p) => p.toJson()).toList();
       await prefs.setString(_productsCacheKey, json.encode(productsJson));
       await prefs.setString(_categoriesCacheKey, json.encode(_allCategories));
-      await prefs.setString(_cacheTimestampKey, DateTime.now().toIso8601String());
-      debugPrint('ProductService: Cached ${_allProducts.length} products and ${_allCategories.length} categories.');
+      await prefs.setString(
+        _cacheTimestampKey,
+        DateTime.now().toIso8601String(),
+      );
+      debugPrint(
+        'ProductService: Cached ${_allProducts.length} products and ${_allCategories.length} categories.',
+      );
     } catch (e) {
       debugPrint('ProductService: Error saving to cache: $e');
     }
   }
 
   // Load from cache
-  Future<bool> _loadFromCache() async { 
+  Future<bool> _loadFromCache() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final productsJson = prefs.getString(_productsCacheKey);
@@ -149,20 +163,24 @@ class ProductService extends ChangeNotifier {
       final List<dynamic> productsData = json.decode(productsJson);
       final List<dynamic> categoriesData = json.decode(categoriesJson);
 
-      _allProducts = productsData
-          .map((data) => Product.fromJson(data as Map<String, dynamic>))
-          .toList();
+      _allProducts =
+          productsData
+              .map((data) => Product.fromJson(data as Map<String, dynamic>))
+              .toList();
       _allCategories = categoriesData.cast<Map<String, String>>();
 
       // Populate _validImageUrls from cached products
       _validImageUrls.clear();
       for (var product in _allProducts) {
-        if (isValidImageUrl(product.imageUrl)) { // Use the new helper method
+        if (isValidImageUrl(product.imageUrl)) {
+          // Use the new helper method
           _validImageUrls.add(product.imageUrl);
         }
       }
 
-      debugPrint('ProductService: Loaded ${_allProducts.length} products and ${_allCategories.length} categories from cache. Found ${_validImageUrls.length} valid image URLs.');
+      debugPrint(
+        'ProductService: Loaded ${_allProducts.length} products and ${_allCategories.length} categories from cache. Found ${_validImageUrls.length} valid image URLs.',
+      );
       return true;
     } catch (e) {
       debugPrint('ProductService: Error loading from cache: $e');
@@ -201,7 +219,9 @@ class ProductService extends ChangeNotifier {
       notifyListeners();
       debugPrint('ProductService: Initial API fetch and caching complete.');
     } catch (e) {
-      debugPrint('ProductService: API failed during initialization: $e. Loading dummy data.');
+      debugPrint(
+        'ProductService: API failed during initialization: $e. Loading dummy data.',
+      );
       _loadDummyCategoriesFallback();
       _loadDummyProductsFallback();
       await _saveToCache(); // Save dummy data to cache
@@ -212,7 +232,9 @@ class ProductService extends ChangeNotifier {
   // Background fetch to update cache (called after initial load if network is present)
   Future<void> _fetchAndUpdateCache() async {
     if (!await _hasNetwork()) {
-      debugPrint('ProductService: No network for background fetch. Skipping cache update.');
+      debugPrint(
+        'ProductService: No network for background fetch. Skipping cache update.',
+      );
       return;
     }
     try {
@@ -236,17 +258,23 @@ class ProductService extends ChangeNotifier {
     final Set<int> seenProIds = {}; // For individual product size IDs
 
     if (_allCategories.isEmpty) {
-      debugPrint('ProductService: Categories not loaded yet. Calling loadCategoriesFromApi...');
+      debugPrint(
+        'ProductService: Categories not loaded yet. Calling loadCategoriesFromApi...',
+      );
       await loadCategoriesFromApi();
       if (_allCategories.isEmpty) {
-        debugPrint('ProductService: Categories still empty after attempting to load.');
+        debugPrint(
+          'ProductService: Categories still empty after attempting to load.',
+        );
         return;
       }
     }
 
     for (var category in _allCategories) {
       final String categoryId = category['cat_id']!;
-      debugPrint('ProductService: Fetching products for category: ${category['label']} (ID: $categoryId)');
+      debugPrint(
+        'ProductService: Fetching products for category: ${category['label']} (ID: $categoryId)',
+      );
       try {
         final Map<String, dynamic> result = await fetchProductsByCategory(
           categoryId,
@@ -254,7 +282,9 @@ class ProductService extends ChangeNotifier {
           limit: 999999999,
         );
         final List<Product> fetchedCategoryProducts = result['products'];
-        debugPrint('ProductService: Received ${fetchedCategoryProducts.length} products for category ID $categoryId.');
+        debugPrint(
+          'ProductService: Received ${fetchedCategoryProducts.length} products for category ID $categoryId.',
+        );
 
         for (var product in fetchedCategoryProducts) {
           // Check for duplicate mainProductId AND individual proIds
@@ -268,13 +298,17 @@ class ProductService extends ChangeNotifier {
                 seenProIds.add(size.proId);
                 uniqueSizes.add(size);
               } else {
-                debugPrint('ProductService: Skipping duplicate size (proId: ${size.proId}) for product ${product.title}');
+                debugPrint(
+                  'ProductService: Skipping duplicate size (proId: ${size.proId}) for product ${product.title}',
+                );
               }
             }
 
             if (uniqueSizes.isNotEmpty) {
               // Create product with only unique sizes
-              final uniqueProduct = product.copyWith(availableSizes: uniqueSizes);
+              final uniqueProduct = product.copyWith(
+                availableSizes: uniqueSizes,
+              );
               _allProducts.add(uniqueProduct);
 
               if (isValidImageUrl(product.imageUrl)) {
@@ -282,21 +316,32 @@ class ProductService extends ChangeNotifier {
               }
             }
           } else {
-            debugPrint('ProductService: Skipping duplicate product (mainProductId: ${product.mainProductId})');
+            debugPrint(
+              'ProductService: Skipping duplicate product (mainProductId: ${product.mainProductId})',
+            );
           }
         }
       } catch (e) {
-        debugPrint('ProductService: Error fetching products for category $categoryId: $e');
+        debugPrint(
+          'ProductService: Error fetching products for category $categoryId: $e',
+        );
       }
     }
-    debugPrint('ProductService: Finished _fetchProductsForAllCategories. Total products: ${_allProducts.length}');
+    debugPrint(
+      'ProductService: Finished _fetchProductsForAllCategories. Total products: ${_allProducts.length}',
+    );
   }
-
 
   // This method fetches products for a single category and returns them.
   // It now accepts offset and limit for pagination.
-  static Future<Map<String, dynamic>> fetchProductsByCategory(String categoryId, {int offset = 0, int limit = 10}) async {
-    debugPrint('ProductService: Fetching products for category ID: $categoryId');
+  static Future<Map<String, dynamic>> fetchProductsByCategory(
+    String categoryId, {
+    int offset = 0,
+    int limit = 10,
+  }) async {
+    debugPrint(
+      'ProductService: Fetching products for category ID: $categoryId',
+    );
     List<Product> products = [];
     bool hasMore = false;
     final Set<String> seenProductMainIds = {};
@@ -305,7 +350,7 @@ class ProductService extends ChangeNotifier {
     try {
       final requestBody = {
         'cid': _cid,
-        'type': '1044',
+        'type': '2057',
         'ln': _ln,
         'lt': _lt,
         'device_id': _deviceId,
@@ -314,26 +359,36 @@ class ProductService extends ChangeNotifier {
         'limit': limit.toString(),
       };
 
-      final response = await http.post(
-        Uri.parse(_productApiUrl),
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: requestBody,
-      ).timeout(const Duration(seconds: 30));
+      final response = await http
+          .post(
+            Uri.parse(_productApiUrl),
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: requestBody,
+          )
+          .timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> responseData = json.decode(response.body);
+        print(
+          'ProductService: Response for category $categoryId: $responseData',
+        );
 
-        if (responseData['status'] == 'success' && responseData['data'] is List) {
+        if (responseData['status'] == 'success' &&
+            responseData['data'] is List) {
           final List<dynamic> rawApiProductsData = responseData['data'];
 
           for (var item in rawApiProductsData) {
-            String productName = item['pro_name'] as String? ?? 'Unknown Product';
-            String technicalName = item['technical_name'] as String? ?? 'No Description';
-            String categoryName = item['category_name'] as String? ?? 'Uncategorized';
+            String productName =
+                item['pro_name'] as String? ?? 'Unknown Product';
+            String technicalName =
+                item['technical_name'] as String? ?? 'No Description';
+            String categoryName =
+                item['category_name'] as String? ?? 'Uncategorized';
             String imageUrl = item['image'] as String? ?? '';
 
             // Generate a more unique mainProductId
-            String productMainId = '${productName}_${categoryId}_${item['pro_id']}';
+            String productMainId =
+                '${productName}_${categoryId}_${item['pro_id']}';
 
             final Set<ProductSize> uniqueSizes = {};
             int? initialSelectedUnitProId;
@@ -341,7 +396,9 @@ class ProductService extends ChangeNotifier {
             if (item.containsKey('sizes') && item['sizes'] is List) {
               for (var sizeJson in (item['sizes'] as List)) {
                 try {
-                  final parsedSize = ProductSize.fromJson(sizeJson as Map<String, dynamic>);
+                  final parsedSize = ProductSize.fromJson(
+                    sizeJson as Map<String, dynamic>,
+                  );
                   if (!seenProIds.contains(parsedSize.proId)) {
                     seenProIds.add(parsedSize.proId);
                     uniqueSizes.add(parsedSize);
@@ -360,27 +417,32 @@ class ProductService extends ChangeNotifier {
               final int fallbackProId = (item['pro_id'] as num?)?.toInt() ?? 0;
               if (!seenProIds.contains(fallbackProId)) {
                 seenProIds.add(fallbackProId);
-                uniqueSizes.add(ProductSize(
-                  proId: fallbackProId,
-                  size: 'Unit',
-                  price: (item['mrp'] as num?)?.toDouble() ?? 0.0,
-                  sellingPrice: (item['selling_price'] as num?)?.toDouble(),
-                ));
+                uniqueSizes.add(
+                  ProductSize(
+                    proId: fallbackProId,
+                    size: 'Unit',
+                    price: (item['mrp'] as num?)?.toDouble() ?? 0.0,
+                    sellingPrice: (item['selling_price'] as num?)?.toDouble(),
+                  ),
+                );
                 initialSelectedUnitProId = fallbackProId;
               }
             }
 
-            if (uniqueSizes.isNotEmpty && !seenProductMainIds.contains(productMainId)) {
+            if (uniqueSizes.isNotEmpty &&
+                !seenProductMainIds.contains(productMainId)) {
               seenProductMainIds.add(productMainId);
-              products.add(Product(
-                mainProductId: productMainId,
-                title: productName,
-                subtitle: technicalName,
-                imageUrl: imageUrl,
-                category: categoryName,
-                availableSizes: uniqueSizes.toList(),
-                initialSelectedUnitProId: initialSelectedUnitProId,
-              ));
+              products.add(
+                Product(
+                  mainProductId: productMainId,
+                  title: productName,
+                  subtitle: technicalName,
+                  imageUrl: imageUrl,
+                  category: categoryName,
+                  availableSizes: uniqueSizes.toList(),
+                  initialSelectedUnitProId: initialSelectedUnitProId,
+                ),
+              );
             }
           }
           hasMore = rawApiProductsData.length == limit;
@@ -397,47 +459,62 @@ class ProductService extends ChangeNotifier {
   // This method is now primarily for initial loading of general products,
   // but _fetchProductsForAllCategories will be the main way to populate _allProducts.
   static Future<void> loadProductsFromApi() async {
-    debugPrint('ProductService: Starting loadProductsFromApi (Type 1041 only) - this now supplements _allProducts.');
+    debugPrint(
+      'ProductService: Starting loadProductsFromApi (Type 1013 only) - this now supplements _allProducts.',
+    );
 
     final List<Product> fetchedGeneralProducts = [];
-    final Set<String> seenProductMainIds = {}; // To track unique products by main ID
+    final Set<String> seenProductMainIds =
+        {}; // To track unique products by main ID
 
-    // --- Fetch general products (type=1041) ---
-    debugPrint('ProductService: Fetching products of type 1041...');
+    // --- Fetch general products (type=1013) ---
+    debugPrint('ProductService: Fetching products of type 1013...');
     try {
-      final requestBody1041 = {
+      final requestBody1013 = {
         'cid': _cid,
-        'type': '1041',
+        'type': '1013',
         'ln': _ln,
         'lt': _lt,
         'device_id': _deviceId,
       };
 
-      final response1041 = await http.post(
-        Uri.parse(_productApiUrl),
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Accept': 'application/json',
-        },
-        body: requestBody1041,
-      ).timeout(const Duration(seconds: 30));
+      final response1013 = await http
+          .post(
+            Uri.parse(_productApiUrl),
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Accept': 'application/json',
+            },
+            body: requestBody1013,
+          )
+          .timeout(const Duration(seconds: 30));
 
-      debugPrint('ProductService: Response Status Code (type=1041): ${response1041.statusCode}');
-      debugPrint('ProductService: Raw Response Body (type=1041): ${response1041.body}');
+      debugPrint(
+        'ProductService: Response Status Code (type=1013): ${response1013.statusCode}',
+      );
+      debugPrint(
+        'ProductService: Raw Response Body (type=1013): ${response1013.body}',
+      );
 
-      if (response1041.statusCode == 200) {
-        final Map<String, dynamic> responseData = json.decode(response1041.body);
-        if (responseData['status'] == 'success' && responseData['data'] is List) {
+      if (response1013.statusCode == 200) {
+        final Map<String, dynamic> responseData = json.decode(
+          response1013.body,
+        );
+        if (responseData['status'] == 'success' &&
+            responseData['data'] is List) {
           final List<dynamic> rawApiProductsData = responseData['data'];
           for (var item in rawApiProductsData) {
-            debugPrint('ProductService: Processing type 1041 item: $item');
+            debugPrint('ProductService: Processing type 1013 item: $item');
             String productName = item['pro_name'] as String? ?? 'No Title';
-            String technicalName = item['technical_name'] as String? ?? 'No Description';
-            String categoryName = item['category_name'] as String? ?? 'Uncategorized';
+            String technicalName =
+                item['technical_name'] as String? ?? 'No Description';
+            String categoryName =
+                item['category_name'] as String? ?? 'Uncategorized';
             String imageUrl = item['image'] as String? ?? '';
 
             // Generate a stable mainProductId for the product group
-            String productMainId = '${productName.replaceAll(' ', '_').toLowerCase()}_${categoryName.replaceAll(' ', '_').toLowerCase()}';
+            String productMainId =
+                '${productName.replaceAll(' ', '_').toLowerCase()}_${categoryName.replaceAll(' ', '_').toLowerCase()}';
 
             // Add valid image URLs to the list
             if (isValidImageUrl(imageUrl)) {
@@ -445,34 +522,55 @@ class ProductService extends ChangeNotifier {
             }
 
             final Set<ProductSize> uniqueSizes = {};
-            int? initialSelectedUnitProId; // To store the pro_id of the first size
+            int?
+            initialSelectedUnitProId; // To store the pro_id of the first size
 
-            if (item.containsKey('sizes') && item['sizes'] is List && (item['sizes'] as List).isNotEmpty) {
+            if (item.containsKey('sizes') &&
+                item['sizes'] is List &&
+                (item['sizes'] as List).isNotEmpty) {
               for (var sizeJson in (item['sizes'] as List)) {
                 try {
-                  final parsedSize = ProductSize.fromJson(sizeJson as Map<String, dynamic>);
+                  final parsedSize = ProductSize.fromJson(
+                    sizeJson as Map<String, dynamic>,
+                  );
                   uniqueSizes.add(parsedSize);
                   if (initialSelectedUnitProId == null) {
-                    initialSelectedUnitProId = parsedSize.proId; // Set the first pro_id as initial selected
+                    initialSelectedUnitProId =
+                        parsedSize
+                            .proId; // Set the first pro_id as initial selected
                   }
                 } catch (e) {
-                  debugPrint('ProductService: Error parsing ProductSize from JSON for product ${item['pro_name']}: $e. JSON: $sizeJson');
+                  debugPrint(
+                    'ProductService: Error parsing ProductSize from JSON for product ${item['pro_name']}: $e. JSON: $sizeJson',
+                  );
                 }
               }
             } else {
               // Handle cases where 'sizes' array is empty or missing, and 'mrp'/'selling_price' might be null
-              final double fallbackMrp = (item['mrp'] as num?)?.toDouble() ?? 0.0;
-              final double? fallbackSellingPrice = (item['selling_price'] as num?)?.toDouble();
-              final int fallbackProId = (item['pro_id'] as num?)?.toInt() ?? 0; // Use the main pro_id as fallback
-              debugPrint('ProductService: No "sizes" array for product ${item['pro_name']}. Using fallback MRP: $fallbackMrp, Selling Price: $fallbackSellingPrice, ProId: $fallbackProId');
-              final fallbackSize = ProductSize(proId: fallbackProId, size: 'Unit', price: fallbackMrp, sellingPrice: fallbackSellingPrice);
+              final double fallbackMrp =
+                  (item['mrp'] as num?)?.toDouble() ?? 0.0;
+              final double? fallbackSellingPrice =
+                  (item['selling_price'] as num?)?.toDouble();
+              final int fallbackProId =
+                  (item['pro_id'] as num?)?.toInt() ??
+                  0; // Use the main pro_id as fallback
+              debugPrint(
+                'ProductService: No "sizes" array for product ${item['pro_name']}. Using fallback MRP: $fallbackMrp, Selling Price: $fallbackSellingPrice, ProId: $fallbackProId',
+              );
+              final fallbackSize = ProductSize(
+                proId: fallbackProId,
+                size: 'Unit',
+                price: fallbackMrp,
+                sellingPrice: fallbackSellingPrice,
+              );
               uniqueSizes.add(fallbackSize);
               initialSelectedUnitProId = fallbackProId;
             }
             List<ProductSize> availableSizes = uniqueSizes.toList();
 
             final product = Product(
-              mainProductId: productMainId, // Use the generated composite ID for the main Product object
+              mainProductId:
+                  productMainId, // Use the generated composite ID for the main Product object
               title: productName,
               subtitle: technicalName,
               imageUrl: imageUrl,
@@ -487,19 +585,27 @@ class ProductService extends ChangeNotifier {
               fetchedGeneralProducts.add(product);
             }
           }
-          debugPrint('ProductService: Added ${fetchedGeneralProducts.length} unique products (by mainProductId) from type 1041.');
+          debugPrint(
+            'ProductService: Added ${fetchedGeneralProducts.length} unique products (by mainProductId) from type 1013.',
+          );
         } else {
-          debugPrint('ProductService: API response format invalid or status not success for type=1041. Response: $responseData');
+          debugPrint(
+            'ProductService: API response format invalid or status not success for type=1013. Response: $responseData',
+          );
         }
       } else {
-        debugPrint('ProductService: Failed to load products for type=1041. Status code: ${response1041.statusCode}. Response: ${response1041.body}');
+        debugPrint(
+          'ProductService: Failed to load products for type=1013. Status code: ${response1013.statusCode}. Response: ${response1013.body}',
+        );
       }
     } on TimeoutException catch (e) {
-      debugPrint('ProductService: Request for type 1041 timed out: $e');
+      debugPrint('ProductService: Request for type 1013 timed out: $e');
     } on http.ClientException catch (e) {
-      debugPrint('ProductService: Network error for type 1041: $e');
+      debugPrint('ProductService: Network error for type 1013: $e');
     } catch (e) {
-      debugPrint('ProductService: Unexpected error fetching type 1041 products: $e');
+      debugPrint(
+        'ProductService: Unexpected error fetching type 1013 products: $e',
+      );
     }
 
     // This method now adds to _allProducts, but _fetchProductsForAllCategories is the main populator.
@@ -510,17 +616,23 @@ class ProductService extends ChangeNotifier {
         _allProducts.add(product);
       }
     }
-    debugPrint('ProductService: Finished loadProductsFromApi (Type 1041). Total products in _allProducts after this: ${_allProducts.length}. Total valid image URLs: ${_validImageUrls.length}');
+    debugPrint(
+      'ProductService: Finished loadProductsFromApi (Type 1013). Total products in _allProducts after this: ${_allProducts.length}. Total valid image URLs: ${_validImageUrls.length}',
+    );
   }
+
+
 
 
   /// NEW: Static method to fetch advertisement data from API (type 2014)
   static Future<List<Ad>> fetchAds() async {
-    debugPrint('ProductService: Attempting to load Ads data from API via POST (type=1020): $_productApiUrl');
+    debugPrint(
+      'ProductService: Attempting to load Ads data from API via POST (type=1020): $_productApiUrl',
+    );
     List<Ad> ads = [];
-       try {
+    try {
       final prefs = await SharedPreferences.getInstance();
-      
+
       double? latitude = prefs.getDouble('latitude');
       double? longitude = prefs.getDouble('longitude');
       String? deviceId = prefs.getString('device_id');
@@ -533,17 +645,23 @@ class ProductService extends ChangeNotifier {
         'device_id': deviceId ?? '', // Specific device_id for ads API
       };
 
-      final response = await http.post(
-        Uri.parse(_productApiUrl),
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Accept': 'application/json',
-        },
-        body: requestBody,
-      ).timeout(const Duration(seconds: 30));
+      final response = await http
+          .post(
+            Uri.parse(_productApiUrl),
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Accept': 'application/json',
+            },
+            body: requestBody,
+          )
+          .timeout(const Duration(seconds: 30));
 
-      debugPrint('ProductService: Response Status Code (type=1020): ${response.statusCode}');
-      debugPrint('ProductService: Raw Response Body (type=1020): ${response.body}');
+      debugPrint(
+        'ProductService: Response Status Code (type=1020): ${response.statusCode}',
+      );
+      debugPrint(
+        'ProductService: Raw Response Body (type=1020): ${response.body}',
+      );
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> responseData = json.decode(response.body);
@@ -552,30 +670,44 @@ class ProductService extends ChangeNotifier {
           for (var item in rawAdsData) {
             ads.add(Ad.fromJson(item as Map<String, dynamic>));
           }
-          debugPrint('ProductService: Successfully parsed ${ads.length} ads from API (type=1020).');
+          debugPrint(
+            'ProductService: Successfully parsed ${ads.length} ads from API (type=1020).',
+          );
         } else {
-          debugPrint('ProductService: API response for Ads (type=1020) invalid or error: ${responseData['message']}. Response: $responseData. Returning empty list.');
+          debugPrint(
+            'ProductService: API response for Ads (type=1020) invalid or error: ${responseData['message']}. Response: $responseData. Returning empty list.',
+          );
         }
       } else {
-        debugPrint('ProductService: Failed to load Ads (type=1020). Status code: ${response.statusCode}. Response: ${response.body}. Returning empty list.');
+        debugPrint(
+          'ProductService: Failed to load Ads (type=1020). Status code: ${response.statusCode}. Response: ${response.body}. Returning empty list.',
+        );
       }
     } on TimeoutException catch (_) {
-      debugPrint('ProductService: Request for Ads (type=1020) timed out. Returning empty list.');
+      debugPrint(
+        'ProductService: Request for Ads (type=1020) timed out. Returning empty list.',
+      );
     } on http.ClientException catch (e) {
-      debugPrint('ProductService: Network error for Ads (type=1020): $e. Returning empty list.');
+      debugPrint(
+        'ProductService: Network error for Ads (type=1020): $e. Returning empty list.',
+      );
     } catch (e) {
-      debugPrint('ProductService: Unexpected error fetching Ads (type=1020): $e. Returning empty list.');
+      debugPrint(
+        'ProductService: Unexpected error fetching Ads (type=1020): $e. Returning empty list.',
+      );
     }
     return ads;
   }
 
   /// NEW: Static method to fetch Deals of the Day data from API (type 2013)
   static Future<List<Deal>> fetchDealsOfTheDay() async {
-    debugPrint('ProductService: Attempting to load Deals of the Day data from API via POST (type=1021): $_productApiUrl');
+    debugPrint(
+      'ProductService: Attempting to load Deals of the Day data from API via POST (type=1021): $_productApiUrl',
+    );
     List<Deal> deals = [];
-       try {
+    try {
       final prefs = await SharedPreferences.getInstance();
-      
+
       double? latitude = prefs.getDouble('latitude');
       double? longitude = prefs.getDouble('longitude');
       String? deviceId = prefs.getString('device_id');
@@ -583,23 +715,28 @@ class ProductService extends ChangeNotifier {
       final requestBody = {
         'cid': _cid,
         'type': '1021',
- 'lt': latitude?.toString() ?? '1',
+        'lt': latitude?.toString() ?? '1',
         'ln': longitude?.toString() ?? '1',
         'device_id': deviceId ?? '1',
-          
       };
 
-      final response = await http.post(
-        Uri.parse(_productApiUrl),
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Accept': 'application/json',
-        },
-        body: requestBody,
-      ).timeout(const Duration(seconds: 30));
+      final response = await http
+          .post(
+            Uri.parse(_productApiUrl),
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Accept': 'application/json',
+            },
+            body: requestBody,
+          )
+          .timeout(const Duration(seconds: 30));
 
-      debugPrint('ProductService: Response Status Code (type=1021): ${response.statusCode}');
-      debugPrint('ProductService: Raw Response Body (type=1021): ${response.body}');
+      debugPrint(
+        'ProductService: Response Status Code (type=1021): ${response.statusCode}',
+      );
+      debugPrint(
+        'ProductService: Raw Response Body (type=1021): ${response.body}',
+      );
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> responseData = json.decode(response.body);
@@ -608,23 +745,34 @@ class ProductService extends ChangeNotifier {
           for (var item in rawDealsData) {
             deals.add(Deal.fromJson(item as Map<String, dynamic>));
           }
-          debugPrint('ProductService: Successfully parsed ${deals.length} deals from API (type=1021).');
+          debugPrint(
+            'ProductService: Successfully parsed ${deals.length} deals from API (type=1021).',
+          );
         } else {
-          debugPrint('ProductService: API response for Deals (type=1021) invalid or error: ${responseData['message']}. Response: $responseData. Returning empty list.');
+          debugPrint(
+            'ProductService: API response for Deals (type=1021) invalid or error: ${responseData['message']}. Response: $responseData. Returning empty list.',
+          );
         }
       } else {
-        debugPrint('ProductService: Failed to load Deals (type=1021). Status code: ${response.statusCode}. Response: ${response.body}. Returning empty list.');
+        debugPrint(
+          'ProductService: Failed to load Deals (type=1021). Status code: ${response.statusCode}. Response: ${response.body}. Returning empty list.',
+        );
       }
     } on TimeoutException catch (_) {
-      debugPrint('ProductService: Request for Deals (type=1021) timed out. Returning empty list.');
+      debugPrint(
+        'ProductService: Request for Deals (type=1021) timed out. Returning empty list.',
+      );
     } on http.ClientException catch (e) {
-      debugPrint('ProductService: Network error for Deals (type=1021): $e. Returning empty list.');
+      debugPrint(
+        'ProductService: Network error for Deals (type=1021): $e. Returning empty list.',
+      );
     } catch (e) {
-      debugPrint('ProductService: Unexpected error fetching Deals (type=1021): $e. Returning empty list.');
+      debugPrint(
+        'ProductService: Unexpected error fetching Deals (type=1021): $e. Returning empty list.',
+      );
     }
     return deals;
   }
-
 
   // Method to get a random valid image URL
   static String getRandomValidImageUrl() {
@@ -635,11 +783,13 @@ class ProductService extends ChangeNotifier {
   }
 
   static Future<void> loadCategoriesFromApi() async {
-    debugPrint('ProductService: Attempting to load CATEGORIES data from API via POST (type=1043): $_productApiUrl');
+    debugPrint(
+      'ProductService: Attempting to load CATEGORIES data from API via POST (type=1014): $_productApiUrl',
+    );
 
-        try {
+    try {
       final prefs = await SharedPreferences.getInstance();
-      
+
       double? latitude = prefs.getDouble('latitude');
       double? longitude = prefs.getDouble('longitude');
       String? deviceId = prefs.getString('device_id');
@@ -647,22 +797,28 @@ class ProductService extends ChangeNotifier {
       final requestBody = {
         'cid': _cid, // Use the consistent CID
         'type': '1014',
-      'lt': latitude?.toString() ?? '1',
+        'lt': latitude?.toString() ?? '1',
         'ln': longitude?.toString() ?? '1',
-        'device_id': deviceId ?? '1'
+        'device_id': deviceId ?? '1',
       };
 
-      final response = await http.post(
-        Uri.parse(_productApiUrl),
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Accept': 'application/json',
-        },
-        body: requestBody,
-      ).timeout(const Duration(seconds: 30));
+      final response = await http
+          .post(
+            Uri.parse(_productApiUrl),
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Accept': 'application/json',
+            },
+            body: requestBody,
+          )
+          .timeout(const Duration(seconds: 30));
 
-      debugPrint('ProductService: Response from server for loadCategoriesFromApi: ${response.body}');
-      debugPrint('ProductService: Response Status Code (type=1014): ${response.statusCode}');
+      debugPrint(
+        'ProductService: Response from server for loadCategoriesFromApi: ${response.body}',
+      );
+      debugPrint(
+        'ProductService: Response Status Code (type=1014): ${response.statusCode}',
+      );
 
       _allCategories.clear();
 
@@ -677,37 +833,56 @@ class ProductService extends ChangeNotifier {
             'HERBICIDE': 'assets/grid3.png',
             'PLANT GROWTH REGULATOR': 'assets/grid4.png',
             'ORGANIC BIOSTIMULANT': 'assets/grid5.png',
-            'LIQUID FERTILIZER': 'assets/grid7.png', // Assuming grid7.png is for Liquid Fertilizer
-            'MICRONUTRIENTS ': 'assets/micro.png', // Note the space in 'MICRONUTRIENTS '
-            'BIO FERTILISER': 'assets/grid10.png', // Assuming grid10.png is for Bio Fertiliser
+            'LIQUID FERTILIZER':
+                'assets/grid7.png', // Assuming grid7.png is for Liquid Fertilizer
+            'MICRONUTRIENTS ':
+                'assets/micro.png', // Note the space in 'MICRONUTRIENTS '
+            'BIO FERTILISER':
+                'assets/grid10.png', // Assuming grid10.png is for Bio Fertiliser
             // Add other categories and their icons as needed based on your assets folder
             // Ensure you have these assets in your project's assets/ folder
           };
 
           for (var item in apiResponse['data'] as List) {
-            String categoryName = (item['category'] as String).trim(); // Trim to remove leading/trailing spaces
+            String categoryName =
+                (item['category'] as String)
+                    .trim(); // Trim to remove leading/trailing spaces
             _allCategories.add({
               'cat_id': item['cat_id'].toString(),
-              'icon': categoryIconMap[categoryName] ?? 'assets/placeholder_category.png', // Fallback icon
+              'icon':
+                  categoryIconMap[categoryName] ??
+                  'assets/placeholder_category.png', // Fallback icon
               'label': categoryName,
             });
           }
-          debugPrint('ProductService: Successfully parsed ${_allCategories.length} categories from API (type=1043).');
+          debugPrint(
+            'ProductService: Successfully parsed ${_allCategories.length} categories from API (type=1014).',
+          );
         } else {
-          debugPrint('ProductService: Failed to load categories from API (type=1043): Invalid data format. Response: $apiResponse. Falling back to dummy categories.');
+          debugPrint(
+            'ProductService: Failed to load categories from API (type=1014): Invalid data format. Response: $apiResponse. Falling back to dummy categories.',
+          );
           _loadDummyCategoriesFallback();
         }
       } else {
-        debugPrint('ProductService: Failed to load categories from API (type=1043). Status code: ${response.statusCode}. Response: ${response.body}. Falling back to dummy categories.');
+        debugPrint(
+          'ProductService: Failed to load categories from API (type=1014). Status code: ${response.statusCode}. Response: ${response.body}. Falling back to dummy categories.',
+        );
         _loadDummyCategoriesFallback();
       }
     } on TimeoutException catch (_) {
-      debugPrint('ProductService: Request (type=1043) timed out. Loading dummy categories.');
+      debugPrint(
+        'ProductService: Request (type=1014) timed out. Loading dummy categories.',
+      );
       _loadDummyCategoriesFallback();
     } on http.ClientException catch (e) {
-      debugPrint('ProductService: Network error for type 1043: $e. Loading dummy categories.');
+      debugPrint(
+        'ProductService: Network error for type 1014: $e. Loading dummy categories.',
+      );
     } catch (e) {
-      debugPrint('ProductService: Unexpected error fetching categories for type 1043: $e. Loading dummy categories.');
+      debugPrint(
+        'ProductService: Unexpected error fetching categories for type 1014: $e. Loading dummy categories.',
+      );
     }
   }
 
@@ -715,21 +890,61 @@ class ProductService extends ChangeNotifier {
   // as category_name is directly available in the 1041 API response.
   // It is kept for backward compatibility with dummy data or if category_name is ever null.
   static String _determineCategory(String proNameLower) {
-    if (proNameLower.contains('insecticide') || proNameLower.contains('buggone') || proNameLower.contains('pestguard')) {
+    if (proNameLower.contains('insecticide') ||
+        proNameLower.contains('buggone') ||
+        proNameLower.contains('pestguard')) {
       return 'INSECTICIDE';
-    } else if (proNameLower.contains('fungicide') || proNameLower.contains('aurastar') || proNameLower.contains('azeem') || proNameLower.contains('valax') || proNameLower.contains('stabinil') || proNameLower.contains('orbiter') || proNameLower.contains('aurastin') || proNameLower.contains('benura') || proNameLower.contains('hello') || proNameLower.contains('capzola') || proNameLower.contains('runner') || proNameLower.contains('panonil') || proNameLower.contains('kurazet') || proNameLower.contains('aurobat') || proNameLower.contains('scara') || proNameLower.contains('hexaura') || proNameLower.contains('auralaxil') || proNameLower.contains('rio gold') || proNameLower.contains('aura m 45') || proNameLower.contains('intac') || proNameLower.contains('whita') || proNameLower.contains('proconzo') || proNameLower.contains('aura sulfa') || proNameLower.contains('cembra') || proNameLower.contains('tridot') || proNameLower.contains('alastor') || proNameLower.contains('tebuconz') || proNameLower.contains('valimin')) {
+    } else if (proNameLower.contains('fungicide') ||
+        proNameLower.contains('aurastar') ||
+        proNameLower.contains('azeem') ||
+        proNameLower.contains('valax') ||
+        proNameLower.contains('stabinil') ||
+        proNameLower.contains('orbiter') ||
+        proNameLower.contains('aurastin') ||
+        proNameLower.contains('benura') ||
+        proNameLower.contains('hello') ||
+        proNameLower.contains('capzola') ||
+        proNameLower.contains('runner') ||
+        proNameLower.contains('panonil') ||
+        proNameLower.contains('kurazet') ||
+        proNameLower.contains('aurobat') ||
+        proNameLower.contains('scara') ||
+        proNameLower.contains('hexaura') ||
+        proNameLower.contains('auralaxil') ||
+        proNameLower.contains('rio gold') ||
+        proNameLower.contains('aura m 45') ||
+        proNameLower.contains('intac') ||
+        proNameLower.contains('whita') ||
+        proNameLower.contains('proconzo') ||
+        proNameLower.contains('aura sulfa') ||
+        proNameLower.contains('cembra') ||
+        proNameLower.contains('tridot') ||
+        proNameLower.contains('alastor') ||
+        proNameLower.contains('tebuconz') ||
+        proNameLower.contains('valimin')) {
       return 'FUNGICIDE';
-    } else if (proNameLower.contains('herbicide') || proNameLower.contains('weed killer')) {
+    } else if (proNameLower.contains('herbicide') ||
+        proNameLower.contains('weed killer')) {
       return 'HERBICIDE';
-    } else if (proNameLower.contains('plant growth regulator') || proNameLower.contains('new super growth') || proNameLower.contains('growth') || proNameLower.contains('promoter') || proNameLower.contains('flourish')) {
+    } else if (proNameLower.contains('plant growth regulator') ||
+        proNameLower.contains('new super growth') ||
+        proNameLower.contains('growth') ||
+        proNameLower.contains('promoter') ||
+        proNameLower.contains('flourish')) {
       return 'PLANT GROWTH REGULATOR';
-    } else if (proNameLower.contains('organic biostimulant') || proNameLower.contains('bio-growth')) {
+    } else if (proNameLower.contains('organic biostimulant') ||
+        proNameLower.contains('bio-growth')) {
       return 'ORGANIC BIOSTIMULANT';
-    } else if (proNameLower.contains('liquid fertilizer') || proNameLower.contains('ferra')) {
+    } else if (proNameLower.contains('liquid fertilizer') ||
+        proNameLower.contains('ferra')) {
       return 'LIQUID FERTILIZER';
-    } else if (proNameLower.contains('micronutrient') || proNameLower.contains('zinc') || proNameLower.contains('bora')) {
+    } else if (proNameLower.contains('micronutrient') ||
+        proNameLower.contains('zinc') ||
+        proNameLower.contains('bora')) {
       return 'MICRONUTRIENTS';
-    } else if (proNameLower.contains('bio fertiliser') || proNameLower.contains('aura vam') || proNameLower.contains('soil rich')) {
+    } else if (proNameLower.contains('bio fertiliser') ||
+        proNameLower.contains('aura vam') ||
+        proNameLower.contains('soil rich')) {
       return 'BIO FERTILISER';
     } else {
       return 'Uncategorized';
@@ -737,7 +952,9 @@ class ProductService extends ChangeNotifier {
   }
 
   static void _loadDummyProductsFallback() {
-    debugPrint('ProductService: Loading static dummy product data for fallback.');
+    debugPrint(
+      'ProductService: Loading static dummy product data for fallback.',
+    );
     _allProducts.clear();
     final List<Map<String, dynamic>> dummyProductsData = [
       {
@@ -747,10 +964,25 @@ class ProductService extends ChangeNotifier {
         "category_name": "BIO FERTILISER", // Added category_name for dummy
         "pro_id": 1001, // Dummy main pro_id
         "sizes": [
-          {"pro_id": 100101, "size": "500 GRM", "mrp": 500.0, "selling_price": 450.0},
-          {"pro_id": 100102, "size": "1 KG", "mrp": 900.0, "selling_price": 800.0},
-          {"pro_id": 100103, "size": "5 KG", "mrp": 4000.0, "selling_price": 3500.0}
-        ]
+          {
+            "pro_id": 100101,
+            "size": "500 GRM",
+            "mrp": 500.0,
+            "selling_price": 450.0,
+          },
+          {
+            "pro_id": 100102,
+            "size": "1 KG",
+            "mrp": 900.0,
+            "selling_price": 800.0,
+          },
+          {
+            "pro_id": 100103,
+            "size": "5 KG",
+            "mrp": 4000.0,
+            "selling_price": 3500.0,
+          },
+        ],
       },
       {
         "image": "assets/hyfen.png",
@@ -759,10 +991,25 @@ class ProductService extends ChangeNotifier {
         "category_name": "MICRONUTRIENTS", // Added category_name for dummy
         "pro_id": 1002, // Dummy main pro_id
         "sizes": [
-          {"pro_id": 100201, "size": "500 GRM", "mrp": 600.0, "selling_price": 550.0},
-          {"pro_id": 100202, "size": "1 KG", "mrp": 1100.0, "selling_price": 1000.0},
-          {"pro_id": 100203, "size": "5 KG", "mrp": 5000.0, "selling_price": 4500.0}
-        ]
+          {
+            "pro_id": 100201,
+            "size": "500 GRM",
+            "mrp": 600.0,
+            "selling_price": 550.0,
+          },
+          {
+            "pro_id": 100202,
+            "size": "1 KG",
+            "mrp": 1100.0,
+            "selling_price": 1000.0,
+          },
+          {
+            "pro_id": 100203,
+            "size": "5 KG",
+            "mrp": 5000.0,
+            "selling_price": 4500.0,
+          },
+        ],
       },
       {
         "image": "assets/Oxyfen.png",
@@ -771,9 +1018,19 @@ class ProductService extends ChangeNotifier {
         "category_name": "INSECTICIDE", // Added category_name for dummy
         "pro_id": 1003, // Dummy main pro_id
         "sizes": [
-          {"pro_id": 100301, "size": "100 ML", "mrp": 900.0, "selling_price": 850.0},
-          {"pro_id": 100302, "size": "250 ML", "mrp": 1500.0, "selling_price": 1400.0}
-        ]
+          {
+            "pro_id": 100301,
+            "size": "100 ML",
+            "mrp": 900.0,
+            "selling_price": 850.0,
+          },
+          {
+            "pro_id": 100302,
+            "size": "250 ML",
+            "mrp": 1500.0,
+            "selling_price": 1400.0,
+          },
+        ],
       },
       {
         "image": "assets/Valaxa.png",
@@ -782,20 +1039,41 @@ class ProductService extends ChangeNotifier {
         "category_name": "FUNGICIDE", // Added category_name for dummy
         "pro_id": 1004, // Dummy main pro_id
         "sizes": [
-          {"pro_id": 100401, "size": "250 ML", "mrp": 950.0, "selling_price": 900.0},
-          {"pro_id": 100402, "size": "500 ML", "mrp": 1550.0, "selling_price": 1450.0},
-        ]
+          {
+            "pro_id": 100401,
+            "size": "250 ML",
+            "mrp": 950.0,
+            "selling_price": 900.0,
+          },
+          {
+            "pro_id": 100402,
+            "size": "500 ML",
+            "mrp": 1550.0,
+            "selling_price": 1450.0,
+          },
+        ],
       },
       {
         "image": "assets/hyfen.png",
         "pro_name": "FLOURISH Promoter (Dummy)",
         "technical_name": "Promotes flowering (Dummy)",
-        "category_name": "PLANT GROWTH REGULATOR", // Added category_name for dummy
+        "category_name":
+            "PLANT GROWTH REGULATOR", // Added category_name for dummy
         "pro_id": 1005, // Dummy main pro_id
         "sizes": [
-          {"pro_id": 100501, "size": "500 ML", "mrp": 1100.0, "selling_price": 1000.0},
-          {"pro_id": 100502, "size": "1 L", "mrp": 2000.0, "selling_price": 1800.0},
-        ]
+          {
+            "pro_id": 100501,
+            "size": "500 ML",
+            "mrp": 1100.0,
+            "selling_price": 1000.0,
+          },
+          {
+            "pro_id": 100502,
+            "size": "1 L",
+            "mrp": 2000.0,
+            "selling_price": 1800.0,
+          },
+        ],
       },
     ];
 
@@ -804,32 +1082,46 @@ class ProductService extends ChangeNotifier {
 
     for (var item in dummyProductsData) {
       String productName = item['pro_name'] as String? ?? 'Unknown Product';
-      String technicalName = item['technical_name'] as String? ?? 'No Description';
+      String technicalName =
+          item['technical_name'] as String? ?? 'No Description';
       String categoryName = item['category_name'] as String? ?? 'Uncategorized';
       String imageUrl = item['image'] as String? ?? '';
 
-      String productMainId = '${productName.replaceAll(' ', '_').toLowerCase()}_${categoryName.replaceAll(' ', '_').toLowerCase()}';
+      String productMainId =
+          '${productName.replaceAll(' ', '_').toLowerCase()}_${categoryName.replaceAll(' ', '_').toLowerCase()}';
 
       final Set<ProductSize> uniqueSizes = {};
       int? initialSelectedUnitProId;
 
-      if (item.containsKey('sizes') && item['sizes'] is List && (item['sizes'] as List).isNotEmpty) {
+      if (item.containsKey('sizes') &&
+          item['sizes'] is List &&
+          (item['sizes'] as List).isNotEmpty) {
         for (var sizeJson in (item['sizes'] as List)) {
           try {
-            final parsedSize = ProductSize.fromJson(sizeJson as Map<String, dynamic>);
+            final parsedSize = ProductSize.fromJson(
+              sizeJson as Map<String, dynamic>,
+            );
             uniqueSizes.add(parsedSize);
             if (initialSelectedUnitProId == null) {
               initialSelectedUnitProId = parsedSize.proId;
             }
           } catch (e) {
-            debugPrint('ProductService: Error parsing ProductSize from JSON for dummy product ${item['pro_name']}: $e. JSON: $sizeJson');
+            debugPrint(
+              'ProductService: Error parsing ProductSize from JSON for dummy product ${item['pro_name']}: $e. JSON: $sizeJson',
+            );
           }
         }
       } else {
         final double fallbackMrp = (item['mrp'] as num?)?.toDouble() ?? 0.0;
-        final double? fallbackSellingPrice = (item['selling_price'] as num?)?.toDouble();
+        final double? fallbackSellingPrice =
+            (item['selling_price'] as num?)?.toDouble();
         final int fallbackProId = (item['pro_id'] as num?)?.toInt() ?? 0;
-        final fallbackSize = ProductSize(proId: fallbackProId, size: 'Unit', price: fallbackMrp, sellingPrice: fallbackSellingPrice);
+        final fallbackSize = ProductSize(
+          proId: fallbackProId,
+          size: 'Unit',
+          price: fallbackMrp,
+          sellingPrice: fallbackSellingPrice,
+        );
         uniqueSizes.add(fallbackSize);
         initialSelectedUnitProId = fallbackProId;
       }
@@ -857,24 +1149,50 @@ class ProductService extends ChangeNotifier {
         _validImageUrls.add(product.imageUrl);
       }
     }
-    debugPrint('ProductService: Successfully loaded ${_allProducts.length} unique dummy products. Found ${_validImageUrls.length} valid image URLs from dummy data.');
+    debugPrint(
+      'ProductService: Successfully loaded ${_allProducts.length} unique dummy products. Found ${_validImageUrls.length} valid image URLs from dummy data.',
+    );
   }
 
   static void _loadDummyCategoriesFallback() {
-    debugPrint('ProductService: Loading static dummy category data for fallback.');
+    debugPrint(
+      'ProductService: Loading static dummy category data for fallback.',
+    );
     _allCategories.clear();
     _allCategories = [
       {'cat_id': '14', 'icon': 'assets/grid1.png', 'label': 'INSECTICIDE'},
       {'cat_id': '15', 'icon': 'assets/grid2.png', 'label': 'FUNGICIDE'},
       {'cat_id': '16', 'icon': 'assets/grid3.png', 'label': 'HERBICIDE'},
-      {'cat_id': '17', 'icon': 'assets/grid4.png', 'label': 'PLANT GROWTH REGULATOR'},
-      {'cat_id': '18', 'icon': 'assets/grid5.png', 'label': 'ORGANIC BIOSTIMULANT'},
-      {'cat_id': '19', 'icon': 'assets/grid6.png', 'label': 'LIQUID FERTILIZER'},
-      {'cat_id': '20', 'icon': 'assets/micro.png', 'label': 'MICRONUTRIENTS '}, // Note the space
+      {
+        'cat_id': '17',
+        'icon': 'assets/grid4.png',
+        'label': 'PLANT GROWTH REGULATOR',
+      },
+      {
+        'cat_id': '18',
+        'icon': 'assets/grid5.png',
+        'label': 'ORGANIC BIOSTIMULANT',
+      },
+      {
+        'cat_id': '19',
+        'icon': 'assets/grid6.png',
+        'label': 'LIQUID FERTILIZER',
+      },
+      {
+        'cat_id': '20',
+        'icon': 'assets/micro.png',
+        'label': 'MICRONUTRIENTS ',
+      }, // Note the space
       {'cat_id': '22', 'icon': 'assets/grid10.png', 'label': 'BIO FERTILISER'},
-      {'cat_id': '99', 'icon': 'assets/placeholder_category.png', 'label': 'SPECIALTY PRODUCT'},
+      {
+        'cat_id': '99',
+        'icon': 'assets/placeholder_category.png',
+        'label': 'SPECIALTY PRODUCT',
+      },
     ];
-    debugPrint('ProductService: Successfully loaded ${_allCategories.length} dummy categories.');
+    debugPrint(
+      'ProductService: Successfully loaded ${_allCategories.length} dummy categories.',
+    );
   }
 
   static List<Product> getAllProducts() {
@@ -882,7 +1200,9 @@ class ProductService extends ChangeNotifier {
   }
 
   static List<Product> getProductsByCategoryName(String category) {
-    return _allProducts.where((product) => product.category == category).toList();
+    return _allProducts
+        .where((product) => product.category == category)
+        .toList();
   }
 
   // MODIFIED: getProductById to find a product by any of its ProductSize proIds
@@ -893,7 +1213,7 @@ class ProductService extends ChangeNotifier {
       // First try to find exact match by size proId
       for (var product in _allProducts) {
         final matchingSize = product.availableSizes.firstWhereOrNull(
-              (size) => size.proId == targetProId,
+          (size) => size.proId == targetProId,
         );
 
         if (matchingSize != null) {
@@ -902,9 +1222,10 @@ class ProductService extends ChangeNotifier {
       }
 
       // If not found by size, try main product ID
-      if (targetProId < 10000) { // Assuming main product IDs are < 10000
+      if (targetProId < 10000) {
+        // Assuming main product IDs are < 10000
         final product = _allProducts.firstWhereOrNull(
-              (p) => p.mainProductId.contains('_${targetProId}'),
+          (p) => p.mainProductId.contains('_${targetProId}'),
         );
 
         if (product != null) {
@@ -926,11 +1247,13 @@ class ProductService extends ChangeNotifier {
   static String? getCategoryIdByName(String categoryName) {
     try {
       final category = _allCategories.firstWhere(
-            (cat) => cat['label'] == categoryName,
+        (cat) => cat['label'] == categoryName,
       );
       return category['cat_id'];
     } catch (e) {
-      debugPrint('ProductService: Category ID not found for name: $categoryName. Error: $e');
+      debugPrint(
+        'ProductService: Category ID not found for name: $categoryName. Error: $e',
+      );
       return null;
     }
   }

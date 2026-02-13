@@ -222,9 +222,9 @@ class _OtpScreenState extends State<OtpScreen> {
       Map<String, String> body = {
         'cid': '85788578',
         'type': '1004',
-        'ln': longitude?.toString() ?? '',
-        'lt': latitude?.toString() ?? '',
-        'device_id': deviceId ?? '',
+        'ln': longitude?.toString() ?? '1',
+        'lt': latitude?.toString() ?? '1',
+        'device_id': deviceId ?? '1',
         'mobile': widget.phoneNumber,
         'otp': otpController.text,
       };

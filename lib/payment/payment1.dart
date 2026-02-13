@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:kisangro/home/bottom.dart';
 import 'package:kisangro/models/product_model.dart';
 import 'package:kisangro/payment/payment2.dart';
-import 'package:kisangro/payment/payment3.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:kisangro/models/cart_model.dart';
@@ -15,6 +15,7 @@ import '../home/myorder.dart';
 import '../menu/wishlist.dart';
 import '../home/noti.dart';
 import '../home/theme_mode_provider.dart';
+import 'razorPay_init.dart'; // Add this import
 
 class delivery extends StatefulWidget {
   final Product? product; // Optional product for "Buy Now" flow
@@ -127,7 +128,7 @@ class _deliveryState extends State<delivery> {
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: FadeInImage.assetNetwork(
-                placeholder: 'assets/images/placeholder.png', // Add a placeholder asset
+                placeholder: 'assets/images/placeholder.png',
                 image: cartItem.imageUrl,
                 width: 80,
                 height: 80,
@@ -242,7 +243,7 @@ class _deliveryState extends State<delivery> {
       {bool isDiscount = false, bool isGrandTotal = false, required bool isDarkMode}) {
     final Color textColor = isDarkMode ? Colors.white : Colors.black;
     final Color greyTextColor = isDarkMode ? Colors.grey[400]! : Colors.grey[700]!;
-    final Color orangeColor = const Color(0xffEB7720); // Orange color, remains constant
+    final Color orangeColor = const Color(0xffEB7720);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
@@ -254,7 +255,7 @@ class _deliveryState extends State<delivery> {
             style: GoogleFonts.poppins(
               fontSize: isGrandTotal ? 16 : 14,
               fontWeight: isGrandTotal ? FontWeight.bold : FontWeight.normal,
-              color: isGrandTotal ? textColor : greyTextColor, // Apply theme colors
+              color: isGrandTotal ? textColor : greyTextColor,
             ),
           ),
           Text(
@@ -290,33 +291,35 @@ class _deliveryState extends State<delivery> {
 
     final Color primaryColor = isDarkMode ? Colors.grey[850]! : Colors.white;
     final Color textColor = isDarkMode ? Colors.white : Colors.black;
+    final Color subtitleColor = isDarkMode ? Colors.white70 : Colors.grey[600]!;
     final Color orangeColor = const Color(0xffEB7720);
     final Color buttonColor = const Color(0xffEB7720);
+    final Color cardBackgroundColor = isDarkMode ? Colors.grey[850]! : Colors.white;
+    final Color cardBorderColor = isDarkMode ? Colors.grey[700]! : Colors.grey.shade300;
+    final Color dottedLineColor = isDarkMode ? Colors.grey[600]! : Colors.grey;
 
     final cartModel = Provider.of<CartModel>(context);
-    final addressModel = Provider.of<AddressModel>(context); // Listen to AddressModel
+    final addressModel = Provider.of<AddressModel>(context);
 
     // Determine the list of items to display and the subtotal
     List<CartItem> items;
     double subTotal = 0.0;
     if (widget.product != null) {
-      // Single product 'Buy Now' flow
       final product = widget.product!;
       final cartItem = CartItem(
-        cusId: 'buy-now-user', // A temporary placeholder for the customer ID
-        proId: product.selectedUnit.proId, // CORRECTED: Use proId from the selected unit
+        cusId: 'buy-now-user',
+        proId: product.selectedUnit.proId,
         title: product.title,
         subtitle: product.subtitle,
         imageUrl: product.imageUrl,
         category: product.category,
         selectedUnitSize: product.selectedUnit.size,
         pricePerUnit: product.sellingPricePerSelectedUnit ?? 0.0,
-        quantity: 1, // Assume quantity is 1 for 'Buy Now'
+        quantity: 1,
       );
       items = [cartItem];
       subTotal = cartItem.totalPrice;
     } else {
-      // Cart flow
       items = cartModel.items;
       subTotal = cartModel.totalAmount;
     }
@@ -349,7 +352,7 @@ class _deliveryState extends State<delivery> {
           // Top section with total amount
           Container(
             width: double.infinity,
-            color: const Color(0xFFF5E6D3), // Light beige color
+            color: const Color(0xFFF5E6D3),
             child: Column(
               children: [
                 Container(
@@ -357,8 +360,6 @@ class _deliveryState extends State<delivery> {
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   decoration: BoxDecoration(
                     border: Border(
-                      // FIX: Replaced BorderDirectional with BorderSide
-
                       bottom: BorderSide(
                         color: Colors.black,
                         width: 1,
@@ -418,112 +419,89 @@ class _deliveryState extends State<delivery> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Delivery Address Section
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Delivery Address',
-                          style: GoogleFonts.poppins(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black,
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: orangeColor,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            'Business',
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              color: Colors.white,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Address Card - Updated to use AddressModel data
+                    // Delivery Address Section - Enhanced with payment3 styling
                     Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.8),
+                        color: cardBackgroundColor,
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.grey.shade300),
+                        border: Border.all(color: cardBorderColor),
+                        boxShadow: [
+                          BoxShadow(
+                            color: isDarkMode ? Colors.transparent : Colors.black.withOpacity(0.05),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          Text(
+                            'Delivery Address',
+                            style: GoogleFonts.poppins(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: orangeColor,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            addressModel.currentName.isNotEmpty && addressModel.currentName != "Smart (name)"
+                                ? addressModel.currentName
+                                : 'No Name Provided',
+                            style: GoogleFonts.poppins(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: textColor,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            addressModel.currentAddress.isNotEmpty
+                                ? addressModel.currentAddress
+                                : 'No address provided',
+                            style: GoogleFonts.poppins(
+                              fontSize: 14,
+                              color: subtitleColor,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Pincode: ${addressModel.currentPincode}',
+                            style: GoogleFonts.poppins(
+                              fontSize: 14,
+                              color: subtitleColor,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
                           Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
                               Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: orangeColor,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.location_on,
-                                  color: Colors.white,
-                                  size: 16,
+                                width: 70,
+                                height: 40,
+                                alignment: Alignment.centerLeft,
+                                child: Image.asset(
+                                  'assets/delivery.gif',
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return const SizedBox.shrink();
+                                  },
                                 ),
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
+                              const SizedBox(width: 8),
+                              Flexible(
                                 child: Text(
-                                  addressModel.currentName, // Use AddressModel data
+                                  'Deliverable by ${DateFormat('dd MMM yyyy').format(DateTime.now().add(const Duration(days: 3)))}',
                                   style: GoogleFonts.poppins(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.black,
+                                    fontSize: 14,
+                                    color: subtitleColor,
                                   ),
                                 ),
                               ),
                             ],
-                          ),
-                          const SizedBox(height: 8),
-                          Padding(
-                            padding: const EdgeInsets.only(left: 40), // Matches location icon's left padding
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(addressModel.currentAddress),
-                                const SizedBox(height: 8),
-                                Text('Pin-code: ${addressModel.currentPincode}'),
-                                const SizedBox(height: 12),
-                                Row(
-                                  crossAxisAlignment: CrossAxisAlignment.center, // Vertically center align
-                                  children: [
-                                    Container(
-                                      width: 70, // Increased width for bigger GIF
-                                      height: 40, // Increased height for bigger GIF
-                                      alignment: Alignment.centerLeft, // Force left alignment
-                                      child: Image.asset(
-                                        'assets/delivery.gif',
-                                        fit: BoxFit.contain, // Maintains aspect ratio without overflow
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Flexible( // Ensures text wraps properly
-                                      child: Text(
-                                        'Deliverable by 20 Apr 2024',
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 14,
-                                          color: Colors.black87,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
                           ),
                         ],
                       ),
@@ -531,7 +509,7 @@ class _deliveryState extends State<delivery> {
 
                     const SizedBox(height: 24),
 
-                    // Change Address Button - Updated design
+                    // Change Address Button
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
@@ -567,6 +545,83 @@ class _deliveryState extends State<delivery> {
                         ),
                       ],
                     ),
+
+                    const SizedBox(height: 24),
+                    
+                    // Dotted Line Separator - From payment3
+                    SizedBox(
+                      width: double.infinity,
+                      height: 1,
+                      child: CustomPaint(
+                        painter: DottedLinePainter(color: dottedLineColor),
+                      ),
+                    ),
+                    
+                    const SizedBox(height: 16),
+                    
+                    // Order Summary Section - From payment3
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Total Amount:',
+                          style: GoogleFonts.poppins(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: textColor,
+                          ),
+                        ),
+                        Text(
+                          '₹ ${grandTotal.toStringAsFixed(2)}',
+                          style: GoogleFonts.poppins(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: textColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '${items.length} Item${items.length > 1 ? 's' : ''} from your cart',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        color: subtitleColor,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    // Price Breakdown
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: cardBackgroundColor,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: cardBorderColor),
+                      ),
+                      child: Column(
+                        children: [
+                          _buildPriceRow('Subtotal', '₹ ${subTotal.toStringAsFixed(2)}', isDarkMode: isDarkMode),
+                          const SizedBox(height: 8),
+                          _buildPriceRow('Shipping Fee', '₹ $shippingFee', isDarkMode: isDarkMode),
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            width: double.infinity,
+                            height: 1,
+                            child: CustomPaint(
+                              painter: DottedLinePainter(color: dottedLineColor),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          _buildPriceRow(
+                            'Grand Total', 
+                            '₹ ${grandTotal.toStringAsFixed(2)}', 
+                            isGrandTotal: true, 
+                            isDarkMode: isDarkMode
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -579,10 +634,49 @@ class _deliveryState extends State<delivery> {
         color: const Color(0xFFF5E6D3),
         child: ElevatedButton(
           onPressed: () {
+            // Get the necessary models
+            final cartModel = Provider.of<CartModel>(context, listen: false);
+            final addressModel = Provider.of<AddressModel>(context, listen: false);
+            
+            // Determine items and total amount
+            List<CartItem> items;
+            double totalAmount = 0.0;
+            
+            if (widget.product != null) {
+              final product = widget.product!;
+              final cartItem = CartItem(
+                cusId: 'buy-now-user',
+                proId: product.selectedUnit.proId,
+                title: product.title,
+                subtitle: product.subtitle,
+                imageUrl: product.imageUrl,
+                category: product.category,
+                selectedUnitSize: product.selectedUnit.size,
+                pricePerUnit: product.sellingPricePerSelectedUnit ?? 0.0,
+                quantity: 1,
+              );
+              items = [cartItem];
+              totalAmount = cartItem.totalPrice;
+            } else {
+              items = cartModel.items;
+              totalAmount = cartModel.totalAmount;
+            }
+            
+            // Add shipping fee
+            const double shippingFee = 40.0;
+            final double grandTotal = totalAmount + shippingFee;
+            
+            // Navigate directly to RazorpayPage
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => PaymentPage(orderId: 'ORDER_${DateTime.now().millisecondsSinceEpoch}'),
+                builder: (context) => RazorpayPage(
+                  orderId: 'ORDER_${DateTime.now().millisecondsSinceEpoch}',
+                  totalAmount: grandTotal,
+                  addressModel: addressModel,
+                  cartItems: items,
+                  paymentMethod: 'RAZORPAY',
+                ),
               ),
             );
           },
@@ -594,7 +688,7 @@ class _deliveryState extends State<delivery> {
             minimumSize: const Size(double.infinity, 50),
           ),
           child: Text(
-            'Proceed',
+            'Proceed to Payment',
             style: GoogleFonts.poppins(
               color: Colors.white,
               fontSize: 18,
@@ -607,8 +701,10 @@ class _deliveryState extends State<delivery> {
   }
 }
 
+// DottedLinePainter class - Moved from payment3.dart
 class DottedLinePainter extends CustomPainter {
   final Color color;
+
   DottedLinePainter({required this.color});
 
   @override
@@ -634,3 +730,4 @@ class DottedLinePainter extends CustomPainter {
   @override
   bool shouldRepaint(CustomPainter oldDelegate) => false;
 }
+

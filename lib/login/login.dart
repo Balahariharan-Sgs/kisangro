@@ -132,9 +132,9 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
       Map<String, String> body = {
         'cid': '85788578',
         'type': '1002',
-        'lt': latitude?.toString() ?? '',
-        'ln': longitude?.toString() ?? '',
-        'device_id': deviceId ?? '',
+        'lt': latitude?.toString() ?? '33',
+        'ln': longitude?.toString() ?? '33',
+        'device_id': deviceId ?? '33',
         'mobile': _enteredPhoneNumber,
         'app_signature': _appSignature,
       };
