@@ -13,7 +13,7 @@ import 'package:collection/collection.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:kisangro/home/product_size_selection_bottom_sheet.dart';
 import 'dart:async';
-import 'package:kisangro/home/search_bar.dart'; // Import the search functionality
+import 'package:kisangro/home/search_bar.dart';
 
 class CategoryProductsScreen extends StatefulWidget {
   final String categoryTitle;
@@ -60,18 +60,18 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
     _searchFocusNode.addListener(_onFocusChange);
   }
 
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    _searchController.dispose();
-    _searchFocusNode.removeListener(_onFocusChange);
-    _searchFocusNode.dispose();
-    _removeOverlay();
-    _debounce?.cancel();
-    super.dispose();
-  }
+ @override
+void dispose() {
+  _removeOverlay(); // FIRST
+  _debounce?.cancel();
+  _scrollController.dispose();
+  _searchController.dispose();
+  _searchFocusNode.dispose();
+  super.dispose();
+}
 
   void _onFocusChange() {
+    if (!mounted) return;
     if (_searchFocusNode.hasFocus && _searchController.text.isNotEmpty) {
       _showSuggestionsOverlay();
     } else {
@@ -80,6 +80,7 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
   }
 
   void _onSearchChanged() {
+    if (!mounted) return;
     setState(() {
       _searchQuery = _searchController.text.toLowerCase();
     });
@@ -100,11 +101,14 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
     // Debounce the actual search filtering
     if (_debounce?.isActive ?? false) _debounce!.cancel();
     _debounce = Timer(const Duration(milliseconds: 500), () {
-      _filterAndDisplayProducts();
+      if (mounted) {
+        _filterAndDisplayProducts();
+      }
     });
   }
 
   void _showSuggestionsOverlay() {
+    if (!mounted) return;
     _removeOverlay();
 
     final renderBox = context.findRenderObject() as RenderBox;
@@ -112,104 +116,114 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
     final offset = renderBox.localToGlobal(Offset.zero);
 
     _overlayEntry = OverlayEntry(
-      builder: (context) => Positioned(
-        left: offset.dx,
-        top: offset.dy + size.height + 5,
-        width: size.width,
-        child: Material(
-          elevation: 4.0,
-          child: Container(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.4,
-            ),
-            decoration: BoxDecoration(
-              color: Theme.of(context).scaffoldBackgroundColor,
-              borderRadius: BorderRadius.circular(8.0),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black12,
-                  blurRadius: 4.0,
+      builder:
+          (context) => Positioned(
+            left: offset.dx,
+            top: offset.dy + size.height + 5,
+            width: size.width,
+            child: Material(
+              elevation: 4.0,
+              child: Container(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.4,
                 ),
-              ],
-            ),
-            child: _searchSuggestions.isEmpty
-                ? Padding(
-              padding: EdgeInsets.all(16.0),
-              child: Text(
-                'No suggestions found',
-                style: GoogleFonts.poppins(),
-              ),
-            )
-                : ListView.builder(
-              padding: EdgeInsets.zero,
-              shrinkWrap: true,
-              itemCount: _searchSuggestions.length,
-              itemBuilder: (context, index) {
-                final product = _searchSuggestions[index];
-                return ListTile(
-                  leading: SizedBox(
-                    width: 40,
-                    height: 40,
-                    child: AspectRatio(
-                      aspectRatio: 1.0,
-                      child: _getEffectiveImageUrl(product.imageUrl).startsWith('http')
-                          ? Image.network(
-                        _getEffectiveImageUrl(product.imageUrl),
-                        fit: BoxFit.contain,
-                        errorBuilder: (context, error, stackTrace) => Image.asset(
-                          'assets/placeholder.png',
-                          fit: BoxFit.contain,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  borderRadius: BorderRadius.circular(8.0),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black12, blurRadius: 4.0),
+                  ],
+                ),
+                child:
+                    _searchSuggestions.isEmpty
+                        ? Padding(
+                          padding: EdgeInsets.all(16.0),
+                          child: Text(
+                            'No suggestions found',
+                            style: GoogleFonts.poppins(),
+                          ),
+                        )
+                        : ListView.builder(
+                          padding: EdgeInsets.zero,
+                          shrinkWrap: true,
+                          itemCount: _searchSuggestions.length,
+                          itemBuilder: (context, index) {
+                            final product = _searchSuggestions[index];
+                            return ListTile(
+                              leading: SizedBox(
+                                width: 40,
+                                height: 40,
+                                child: AspectRatio(
+                                  aspectRatio: 1.0,
+                                  child:
+                                      _getEffectiveImageUrl(
+                                            product.imageUrl,
+                                          ).startsWith('http')
+                                          ? Image.network(
+                                            _getEffectiveImageUrl(
+                                              product.imageUrl,
+                                            ),
+                                            fit: BoxFit.contain,
+                                            errorBuilder:
+                                                (context, error, stackTrace) =>
+                                                    Image.asset(
+                                                      'assets/placeholder.png',
+                                                      fit: BoxFit.contain,
+                                                    ),
+                                          )
+                                          : Image.asset(
+                                            _getEffectiveImageUrl(
+                                              product.imageUrl,
+                                            ),
+                                            fit: BoxFit.contain,
+                                          ),
+                                ),
+                              ),
+                              title: Text(
+                                product.title,
+                                style: GoogleFonts.poppins(),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              subtitle: Text(
+                                product.subtitle,
+                                style: GoogleFonts.poppins(fontSize: 12),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              onTap: () {
+                                if (!mounted) return;
+                                _searchController.text = product.title;
+                                _removeOverlay();
+                                _searchFocusNode.unfocus();
+                                _filterAndDisplayProducts();
+                              },
+                            );
+                          },
                         ),
-                      )
-                          : Image.asset(
-                        _getEffectiveImageUrl(product.imageUrl),
-                        fit: BoxFit.contain,
-                      ),
-                    ),
-                  ),
-                  title: Text(
-                    product.title,
-                    style: GoogleFonts.poppins(),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Text(
-                    product.subtitle,
-                    style: GoogleFonts.poppins(fontSize: 12),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  onTap: () {
-                    _searchController.text = product.title;
-                    _removeOverlay();
-                    _searchFocusNode.unfocus();
-                    _filterAndDisplayProducts();
-                  },
-                );
-              },
+              ),
             ),
           ),
-        ),
-      ),
     );
 
     Overlay.of(context).insert(_overlayEntry!);
-    setState(() {
-      _showSuggestions = true;
-    });
+    if (mounted) {
+      setState(() {
+        _showSuggestions = true;
+      });
+    }
   }
 
   void _removeOverlay() {
-    if (_overlayEntry != null) {
+    if (_overlayEntry != null && _overlayEntry!.mounted) {
       _overlayEntry!.remove();
-      _overlayEntry = null;
     }
-    setState(() {
-      _showSuggestions = false;
-    });
+    _overlayEntry = null;
+    _showSuggestions = false;
   }
 
   void _performSearchSuggestions(String query) {
+    if (!mounted) return;
     if (query.isEmpty) {
       setState(() {
         _searchSuggestions = [];
@@ -219,30 +233,47 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
 
     try {
       // Filter from the current category products instead of all products
-      List<Product> results = _allProducts.where((product) =>
-      product.title.toLowerCase().contains(query.toLowerCase()) ||
-          product.subtitle.toLowerCase().contains(query.toLowerCase()) ||
-          product.category.toLowerCase().contains(query.toLowerCase())
-      ).toList();
+      List<Product> results =
+          _allProducts
+              .where(
+                (product) =>
+                    product.title.toLowerCase().contains(query.toLowerCase()) ||
+                    product.subtitle.toLowerCase().contains(
+                      query.toLowerCase(),
+                    ) ||
+                    product.category.toLowerCase().contains(
+                      query.toLowerCase(),
+                    ),
+              )
+              .toList();
 
-      setState(() {
-        _searchSuggestions = results.take(5).toList();
-      });
+      if (mounted) {
+        setState(() {
+          _searchSuggestions = results.take(5).toList();
+        });
+      }
 
       // Update overlay if it's visible
       if (_showSuggestions && _overlayEntry != null) {
         _overlayEntry!.markNeedsBuild();
       }
     } catch (e) {
-      setState(() {
-        _searchSuggestions = [];
-      });
+      if (mounted) {
+        setState(() {
+          _searchSuggestions = [];
+        });
+      }
       debugPrint('Search suggestions error: $e');
     }
   }
 
   // Add this method for showing size selection bottom sheet
-  void _showSizeSelectionBottomSheet(BuildContext context, Product product, bool isDarkMode) {
+  void _showSizeSelectionBottomSheet(
+    BuildContext context,
+    Product product,
+    bool isDarkMode,
+  ) {
+    if (!mounted) return;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -259,14 +290,20 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
   String _getEffectiveImageUrl(String rawImageUrl) {
     if (rawImageUrl.isEmpty ||
         rawImageUrl == 'https://sgserp.in/erp/api/' ||
-        (Uri.tryParse(rawImageUrl)?.isAbsolute != true && !rawImageUrl.startsWith('assets/'))) {
+        (Uri.tryParse(rawImageUrl)?.isAbsolute != true &&
+            !rawImageUrl.startsWith('assets/'))) {
       return ProductService.getRandomValidImageUrl();
     }
     return rawImageUrl;
   }
 
   void _onScroll() {
-    if (!_hasMore || _isLoadingMore || _isLoading || _searchQuery.isNotEmpty) return;
+    if (!mounted ||
+        !_hasMore ||
+        _isLoadingMore ||
+        _isLoading ||
+        _searchQuery.isNotEmpty)
+      return;
     if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent * 0.9) {
       _loadMoreProducts();
@@ -274,21 +311,26 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
   }
 
   void _filterAndDisplayProducts() {
+    if (!mounted) return;
     if (_searchQuery.isEmpty) {
       _displayedProducts = List.from(_allProducts);
     } else {
-      _displayedProducts = _allProducts
-          .where((product) =>
-      product.title.toLowerCase().contains(_searchQuery) ||
-          product.subtitle.toLowerCase().contains(_searchQuery) ||
-          product.category.toLowerCase().contains(_searchQuery))
-          .toList();
+      _displayedProducts =
+          _allProducts
+              .where(
+                (product) =>
+                    product.title.toLowerCase().contains(_searchQuery) ||
+                    product.subtitle.toLowerCase().contains(_searchQuery) ||
+                    product.category.toLowerCase().contains(_searchQuery),
+              )
+              .toList();
     }
     _isLoadingMore = false;
   }
 
   Future<void> _fetchCategoryProducts({bool initialLoad = false}) async {
     if (initialLoad) {
+      if (!mounted) return;
       setState(() {
         _isLoading = true;
         _errorMessage = null;
@@ -300,11 +342,12 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
     }
 
     try {
-      final Map<String, dynamic> result = await ProductService.fetchProductsByCategory(
-        widget.categoryId,
-        offset: initialLoad ? 0 : _offset,
-        limit: _loadAllLimit,
-      );
+      final Map<String, dynamic> result =
+          await ProductService.fetchProductsByCategory(
+            widget.categoryId,
+            offset: initialLoad ? 0 : _offset,
+            limit: _loadAllLimit,
+          );
 
       final List<Product> fetchedProducts = result['products'];
       final bool fetchedHasMore = result['hasMore'];
@@ -320,10 +363,13 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
         });
       }
     } catch (e) {
-      debugPrint('Error fetching products for category ${widget.categoryTitle} (ID: ${widget.categoryId}): $e');
+      debugPrint(
+        'Error fetching products for category ${widget.categoryTitle} (ID: ${widget.categoryId}): $e',
+      );
       if (mounted) {
         setState(() {
-          _errorMessage = 'Failed to load products. Please try again later. ($e)';
+          _errorMessage =
+              'Failed to load products. Please try again later. ($e)';
           _isLoading = false;
           _isLoadingMore = false;
         });
@@ -332,7 +378,8 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
   }
 
   void _loadMoreProducts() async {
-    if (!_hasMore || _isLoadingMore || _searchQuery.isNotEmpty) return;
+    if (!_hasMore || _isLoadingMore || _searchQuery.isNotEmpty || !mounted)
+      return;
 
     setState(() {
       _isLoadingMore = true;
@@ -340,12 +387,15 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
 
     await Future.delayed(const Duration(milliseconds: 500));
 
+    if (!mounted) return;
+
     try {
-      final Map<String, dynamic> result = await ProductService.fetchProductsByCategory(
-        widget.categoryId,
-        offset: _offset,
-        limit: 10,
-      );
+      final Map<String, dynamic> result =
+          await ProductService.fetchProductsByCategory(
+            widget.categoryId,
+            offset: _offset,
+            limit: 10,
+          );
 
       final List<Product> fetchedProducts = result['products'];
       final bool fetchedHasMore = result['hasMore'];
@@ -360,10 +410,13 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
         });
       }
     } catch (e) {
-      debugPrint('Error loading more products for category ${widget.categoryTitle} (ID: ${widget.categoryId}): $e');
+      debugPrint(
+        'Error loading more products for category ${widget.categoryTitle} (ID: ${widget.categoryId}): $e',
+      );
       if (mounted) {
         setState(() {
-          _errorMessage = 'Failed to load more products. Please try again later. ($e)';
+          _errorMessage =
+              'Failed to load more products. Please try again later. ($e)';
           _isLoadingMore = false;
         });
       }
@@ -371,9 +424,11 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
   }
 
   Widget _buildSearchBar(bool isDarkMode) {
-    final Color searchBarFillColor = isDarkMode ? Colors.grey[800]! : Colors.white;
+    final Color searchBarFillColor =
+        isDarkMode ? Colors.grey[800]! : Colors.white;
     final Color hintTextColor = isDarkMode ? Colors.white70 : Colors.grey[600]!;
-    final Color prefixIconColor = isDarkMode ? Colors.white70 : const Color(0xffEB7720);
+    final Color prefixIconColor =
+        isDarkMode ? Colors.white70 : const Color(0xffEB7720);
     final Color suffixIconColor = isDarkMode ? Colors.white70 : Colors.grey;
     final Color textColor = isDarkMode ? Colors.white : Colors.black;
 
@@ -386,26 +441,32 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
           hintText: 'Search products in ${widget.categoryTitle}...',
           hintStyle: GoogleFonts.poppins(color: hintTextColor),
           prefixIcon: Icon(Icons.search, color: prefixIconColor),
-          suffixIcon: _searchController.text.isNotEmpty
-              ? IconButton(
-            icon: Icon(Icons.clear, color: suffixIconColor),
-            onPressed: () {
-              _searchController.clear();
-              _removeOverlay();
-              _filterAndDisplayProducts();
-            },
-          )
-              : null,
+          suffixIcon:
+              _searchController.text.isNotEmpty
+                  ? IconButton(
+                    icon: Icon(Icons.clear, color: suffixIconColor),
+                    onPressed: () {
+                      if (!mounted) return;
+                      _searchController.clear();
+                      _removeOverlay();
+                      _filterAndDisplayProducts();
+                    },
+                  )
+                  : null,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
             borderSide: BorderSide.none,
           ),
           filled: true,
           fillColor: searchBarFillColor,
-          contentPadding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
+          contentPadding: const EdgeInsets.symmetric(
+            vertical: 12.0,
+            horizontal: 16.0,
+          ),
         ),
         style: GoogleFonts.poppins(fontSize: 14, color: textColor),
         onSubmitted: (value) {
+          if (!mounted) return;
           _removeOverlay();
           _searchFocusNode.unfocus();
           _filterAndDisplayProducts();
@@ -417,15 +478,17 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
   // Updated shimmer effect to match wishlist.dart style
   Widget _buildShimmerGrid(bool isDarkMode) {
     final Color baseColor = isDarkMode ? Colors.grey[800]! : Colors.grey[300]!;
-    final Color highlightColor = isDarkMode ? Colors.grey[700]! : Colors.grey[100]!;
+    final Color highlightColor =
+        isDarkMode ? Colors.grey[700]! : Colors.grey[100]!;
     final Color cardColor = isDarkMode ? Colors.grey[850]! : Colors.white;
-    final Color borderColor = isDarkMode ? Colors.grey[700]! : Colors.grey[300]!;
+    final Color borderColor =
+        isDarkMode ? Colors.grey[700]! : Colors.grey[300]!;
 
     return SliverPadding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 0),
       sliver: SliverGrid(
         delegate: SliverChildBuilderDelegate(
-              (context, index) {
+          (context, index) {
             return Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
@@ -455,18 +518,10 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                     ),
                     const SizedBox(height: 5),
                     // Subtitle placeholder
-                    Container(
-                      width: 100,
-                      height: 12,
-                      color: Colors.white,
-                    ),
+                    Container(width: 100, height: 12, color: Colors.white),
                     const SizedBox(height: 10),
                     // Price placeholder
-                    Container(
-                      width: 80,
-                      height: 12,
-                      color: Colors.white,
-                    ),
+                    Container(width: 80, height: 12, color: Colors.white),
                     const SizedBox(height: 10),
                     // Dropdown placeholder
                     Container(
@@ -479,17 +534,10 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                     Row(
                       children: [
                         Expanded(
-                          child: Container(
-                            height: 36,
-                            color: Colors.white,
-                          ),
+                          child: Container(height: 36, color: Colors.white),
                         ),
                         const SizedBox(width: 10),
-                        Container(
-                          width: 44,
-                          height: 44,
-                          color: Colors.white,
-                        ),
+                        Container(width: 44, height: 44, color: Colors.white),
                       ],
                     ),
                   ],
@@ -514,9 +562,12 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
     final themeMode = Provider.of<ThemeModeProvider>(context).themeMode;
     final isDarkMode = themeMode == ThemeMode.dark;
 
-    final Color backgroundColor = isDarkMode ? Colors.black : const Color(0xFFFFF7F1);
-    final Color gradientStartColor = isDarkMode ? Colors.black : const Color(0xffFFD9BD);
-    final Color gradientEndColor = isDarkMode ? Colors.black : const Color(0xffFFFFFF);
+    final Color backgroundColor =
+        isDarkMode ? Colors.black : const Color(0xFFFFF7F1);
+    final Color gradientStartColor =
+        isDarkMode ? Colors.black : const Color(0xffFFD9BD);
+    final Color gradientEndColor =
+        isDarkMode ? Colors.black : const Color(0xffFFFFFF);
     final Color textColor = isDarkMode ? Colors.white : Colors.black;
     final Color errorTextColor = isDarkMode ? Colors.red.shade300 : Colors.red;
     final Color infoTextColor = isDarkMode ? Colors.grey[300]! : Colors.black54;
@@ -533,6 +584,7 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () {
+            if (!mounted) return;
             Navigator.pop(context);
           },
         ),
@@ -545,89 +597,122 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
             colors: [gradientStartColor, gradientEndColor],
           ),
         ),
-        child: _errorMessage != null
-            ? Center(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Text(
-              _errorMessage!,
-              textAlign: TextAlign.center,
-              style: GoogleFonts.poppins(color: errorTextColor, fontSize: 16),
-            ),
-          ),
-        )
-            : CustomScrollView(
-          controller: _scrollController,
-          slivers: [
-            SliverToBoxAdapter(
-              child: _buildSearchBar(isDarkMode),
-            ),
-            if (_isLoading)
-              _buildShimmerGrid(isDarkMode)
-            else
-              SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 0),
-                sliver: SliverGrid(
-                  delegate: SliverChildBuilderDelegate(
-                        (context, index) {
-                      final product = _displayedProducts[index];
-                      return ChangeNotifierProvider<Product>.value(
-                        value: product,
-                        child: _buildProductTile(context, product, isDarkMode),
-                      );
-                    },
-                    childCount: _displayedProducts.length,
+        child:
+            _errorMessage != null
+                ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Text(
+                      _errorMessage!,
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.poppins(
+                        color: errorTextColor,
+                        fontSize: 16,
+                      ),
+                    ),
                   ),
-                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 200,
-                    crossAxisSpacing: 15,
-                    mainAxisSpacing: 15,
-                    mainAxisExtent: 320,
-                  ),
+                )
+                : CustomScrollView(
+                  controller: _scrollController,
+                  slivers: [
+                    SliverToBoxAdapter(child: _buildSearchBar(isDarkMode)),
+                    if (_isLoading)
+                      _buildShimmerGrid(isDarkMode)
+                    else
+                      SliverPadding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16.0,
+                          vertical: 0,
+                        ),
+                        sliver: SliverGrid(
+                          delegate: SliverChildBuilderDelegate((
+                            context,
+                            index,
+                          ) {
+                            final product = _displayedProducts[index];
+                            return ChangeNotifierProvider<Product>.value(
+                              value: product,
+                              child: _buildProductTile(
+                                context,
+                                product,
+                                isDarkMode,
+                              ),
+                            );
+                          }, childCount: _displayedProducts.length),
+                          gridDelegate:
+                              const SliverGridDelegateWithMaxCrossAxisExtent(
+                                maxCrossAxisExtent: 200,
+                                crossAxisSpacing: 15,
+                                mainAxisSpacing: 15,
+                                mainAxisExtent: 320,
+                              ),
+                        ),
+                      ),
+                    if (_isLoadingMore && _searchQuery.isEmpty && _hasMore)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              color: orangeColor,
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (_displayedProducts.isEmpty &&
+                        _searchQuery.isEmpty &&
+                        !_isLoading &&
+                        _errorMessage == null)
+                      SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: Center(
+                          child: Text(
+                            'No products found for this category.',
+                            style: GoogleFonts.poppins(
+                              fontSize: 16,
+                              color: infoTextColor,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-              ),
-            if (_isLoadingMore && _searchQuery.isEmpty && _hasMore)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Center(
-                    child: CircularProgressIndicator(color: orangeColor),
-                  ),
-                ),
-              ),
-            if (_displayedProducts.isEmpty && _searchQuery.isEmpty && !_isLoading && _errorMessage == null)
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: Center(
-                  child: Text(
-                    'No products found for this category.',
-                    style: GoogleFonts.poppins(fontSize: 16, color: infoTextColor),
-                  ),
-                ),
-              ),
-          ],
-        ),
       ),
     );
   }
 
-  Widget _buildProductTile(BuildContext context, Product product, bool isDarkMode) {
+  Widget _buildProductTile(
+    BuildContext context,
+    Product product,
+    bool isDarkMode,
+  ) {
     final Color themeOrange = const Color(0xffEB7720);
-    final Color cardBackgroundColor = isDarkMode ? Colors.grey[900]! : Colors.white;
-    final Color borderColor = isDarkMode ? Colors.grey[700]! : Colors.grey.shade300;
+    final Color cardBackgroundColor =
+        isDarkMode ? Colors.grey[900]! : Colors.white;
+    final Color borderColor =
+        isDarkMode ? Colors.grey[700]! : Colors.grey.shade300;
     final Color textColor = isDarkMode ? Colors.white : Colors.black;
     final Color greyTextColor = isDarkMode ? Colors.grey[400]! : Colors.grey;
-    final Color boxShadowColor = isDarkMode ? Colors.transparent : Colors.black12;
+    final Color boxShadowColor =
+        isDarkMode ? Colors.transparent : Colors.black12;
     final Color dividerColor = isDarkMode ? Colors.grey[700]! : Colors.grey;
 
     return Consumer<Product>(
       builder: (context, product, child) {
-        final List<ProductSize> effectiveAvailableSizes = product.availableSizes.isNotEmpty
-            ? product.availableSizes
-            : [ProductSize(proId: 0, size: 'Unit', price: 0.0, sellingPrice: 0.0)];
+        final List<ProductSize> effectiveAvailableSizes =
+            product.availableSizes.isNotEmpty
+                ? product.availableSizes
+                : [
+                  ProductSize(
+                    proId: 0,
+                    size: 'Unit',
+                    price: 0.0,
+                    sellingPrice: 0.0,
+                  ),
+                ];
 
         ProductSize currentSelectedUnit = effectiveAvailableSizes.firstWhere(
-              (sizeOption) => sizeOption.proId == product.selectedUnit.proId,
+          (sizeOption) => sizeOption.proId == product.selectedUnit.proId,
           orElse: () => effectiveAvailableSizes.first,
         );
         String resolvedSelectedUnitSize = currentSelectedUnit.size;
@@ -641,9 +726,7 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
             color: cardBackgroundColor,
             border: Border.all(color: borderColor),
             borderRadius: BorderRadius.circular(10),
-            boxShadow: [
-              BoxShadow(color: boxShadowColor, blurRadius: 6),
-            ],
+            boxShadow: [BoxShadow(color: boxShadowColor, blurRadius: 6)],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -651,15 +734,22 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
             children: [
               GestureDetector(
                 onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => ChangeNotifierProvider<Product>.value(
-                        value: product,
-                        child: ProductDetailPage(product: product),
+                  // FIX: Use WidgetsBinding.instance.addPostFrameCallback to ensure widget is still mounted
+                   {
+                    _removeOverlay(); // 🔥 CRITICAL
+                    _searchFocusNode.unfocus();
+
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder:
+                            (_) => ChangeNotifierProvider<Product>.value(
+                              value: product,
+                              child: ProductDetailPage(product: product),
+                            ),
                       ),
-                    ),
-                  );
+                    );
+                  };
                 },
                 child: SizedBox(
                   width: double.infinity,
@@ -667,19 +757,23 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                   child: Center(
                     child: AspectRatio(
                       aspectRatio: 1.0,
-                      child: _getEffectiveImageUrl(product.imageUrl).startsWith('http')
-                          ? Image.network(
-                        _getEffectiveImageUrl(product.imageUrl),
-                        fit: BoxFit.contain,
-                        errorBuilder: (context, error, stackTrace) => Image.asset(
-                          'assets/placeholder.png',
-                          fit: BoxFit.contain,
-                        ),
-                      )
-                          : Image.asset(
-                        _getEffectiveImageUrl(product.imageUrl),
-                        fit: BoxFit.contain,
-                      ),
+                      child:
+                          _getEffectiveImageUrl(
+                                product.imageUrl,
+                              ).startsWith('http')
+                              ? Image.network(
+                                _getEffectiveImageUrl(product.imageUrl),
+                                fit: BoxFit.contain,
+                                errorBuilder:
+                                    (context, error, stackTrace) => Image.asset(
+                                      'assets/placeholder.png',
+                                      fit: BoxFit.contain,
+                                    ),
+                              )
+                              : Image.asset(
+                                _getEffectiveImageUrl(product.imageUrl),
+                                fit: BoxFit.contain,
+                              ),
                     ),
                   ),
                 ),
@@ -711,21 +805,28 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                       style: GoogleFonts.poppins(
                         fontSize: 12,
                         color: greyTextColor,
-                        decoration: (currentSellingPrice != null && currentSellingPrice != currentMrp)
-                            ? TextDecoration.lineThrough
-                            : TextDecoration.none,
+                        decoration:
+                            (currentSellingPrice != null &&
+                                    currentSellingPrice != currentMrp)
+                                ? TextDecoration.lineThrough
+                                : TextDecoration.none,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  if (currentSellingPrice != null && currentSellingPrice != currentMrp)
+                  if (currentSellingPrice != null &&
+                      currentSellingPrice != currentMrp)
                     Flexible(
                       child: Padding(
                         padding: const EdgeInsets.only(left: 4.0),
                         child: Text(
                           'Our Price: ₹ ${currentSellingPrice.toStringAsFixed(2)}',
-                          style: GoogleFonts.poppins(fontSize: 14, color: Colors.green, fontWeight: FontWeight.w600),
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            color: Colors.green,
+                            fontWeight: FontWeight.w600,
+                          ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -745,7 +846,16 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                 ),
                 child: InkWell(
                   onTap: () {
-                    _showSizeSelectionBottomSheet(context, product, isDarkMode);
+                    // FIX: Use WidgetsBinding.instance.addPostFrameCallback
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) {
+                        _showSizeSelectionBottomSheet(
+                          context,
+                          product,
+                          isDarkMode,
+                        );
+                      }
+                    });
                   },
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -757,11 +867,7 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                           color: textColor,
                         ),
                       ),
-                      Icon(
-                        Icons.arrow_drop_down,
-                        color: themeOrange,
-                        size: 20,
-                      ),
+                      Icon(Icons.arrow_drop_down, color: themeOrange, size: 20),
                     ],
                   ),
                 ),
@@ -773,14 +879,27 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                   Expanded(
                     child: ElevatedButton(
                       onPressed: () {
-                        _showSizeSelectionBottomSheet(context, product, isDarkMode);
+                        // FIX: Use WidgetsBinding.instance.addPostFrameCallback
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted) {
+                            _showSizeSelectionBottomSheet(
+                              context,
+                              product,
+                              isDarkMode,
+                            );
+                          }
+                        });
                       },
                       style: ElevatedButton.styleFrom(
-                          backgroundColor: themeOrange,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 8)),
+                        backgroundColor: themeOrange,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 8,
+                        ),
+                      ),
                       child: Text(
                         "Add",
                         style: GoogleFonts.poppins(
@@ -796,15 +915,21 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                     height: 44,
                     child: Consumer<WishlistModel>(
                       builder: (context, wishlist, child) {
-                        final bool isFavorite = wishlist.containsItem(product.selectedUnit.proId);
+                        final bool isFavorite = wishlist.containsItem(
+                          product.selectedUnit.proId,
+                        );
 
                         return IconButton(
                           padding: EdgeInsets.zero,
                           visualDensity: VisualDensity.compact,
                           onPressed: () async {
+                            // FIX: Check if mounted before async operation
                             if (!mounted) return;
+
                             final success = await wishlist.toggleItem(product);
-                            if (success != null) {
+
+                            // FIX: Check if still mounted after async operation
+                            if (mounted && success != null) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content: Text(
@@ -812,7 +937,8 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                                         ? '${product.title} removed from wishlist!'
                                         : '${product.title} added to wishlist!',
                                   ),
-                                  backgroundColor: isFavorite ? Colors.red : Colors.blue,
+                                  backgroundColor:
+                                      isFavorite ? Colors.red : Colors.blue,
                                 ),
                               );
                             }

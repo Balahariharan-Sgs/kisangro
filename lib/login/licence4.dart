@@ -367,7 +367,12 @@ class _licence4State extends State<licence4> {
   }) async {
     const String apiUrl = 'https://erpsmart.in/total/api/m_api/';
 
-    try {
+   try {
+      final prefs = await SharedPreferences.getInstance();
+
+      double? latitude = prefs.getDouble('latitude');
+      double? longitude = prefs.getDouble('longitude');
+      String? deviceId = prefs.getString('device_id');
       final request = http.MultipartRequest('POST', Uri.parse(apiUrl));
 
       // Add fields for fertilizer API (type: 1012)
@@ -375,9 +380,9 @@ class _licence4State extends State<licence4> {
         'cid': cid,
         'cus_id': cusId,
         'type': '1012', // Fertilizer license type
-        'ln': ln,
-        'lt': lt,
-        'device_id': deviceId,
+        'lt': latitude?.toString() ?? '1',
+        'ln': longitude?.toString() ?? '1',
+        'device_id': deviceId ?? '1',
         'fl_no': flNo,
         'expire_date': expireDate,
       });

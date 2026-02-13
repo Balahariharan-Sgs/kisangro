@@ -792,10 +792,6 @@ class _kycState extends State<kyc> {
                               ),
                             );
 
-
-
-
-                            
                             return;
                           }
 
@@ -811,29 +807,46 @@ class _kycState extends State<kyc> {
                               gstin: _gstinController.text,
                               cid: _cid,
                               type: '1010',
-                              lt: latitude?.toString() ?? '',
-                              ln: longitude?.toString() ?? '',
-                              deviceId: deviceId ?? '',
+                              lt: latitude?.toString() ?? '1',
+                              ln: longitude?.toString() ?? '1',
+                              deviceId: deviceId ?? '1',
                               cusId: _cusId?.toString() ?? '',
                             );
 
-                            if (response['status'] == 'success') {
-                              final address = _extractAddressFromResponse(
-                                response,
-                              );
+                            if (response['error'] == false &&
+                                response['data'] != null) {
+                              final data = response['data'];
+
                               setState(() {
                                 _isGstinVerified = true;
+
+                                // ✅ Auto-fill all verified GST data
+                                _businessNameController.text =
+                                    data['com_name'] ?? '';
+                                _fullNameController.text = data['name'] ?? '';
+                                _panNumberController.text = data['pan'] ?? '';
+                                _mailIdController.text = data['email'] ?? '';
+
+                                if (data['phone'] != null) {
+                                  _businessContactNumberController.text =
+                                      data['phone'].toString();
+                                  _whatsAppNumberController.text =
+                                      data['phone'].toString();
+                                }
+
+                                _gstinController.text =
+                                    data['gst'] ?? _gstinController.text;
+
                                 _gstinDetails = {
-                                  'GSTIN': _gstinController.text,
-                                  'Business Address':
-                                      address ?? 'Address verified',
+                                  'GSTIN': data['gst'],
+                                  'Business Address': data['address'],
                                 };
                               });
 
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content: Text(
-                                    'GSTIN verified successfully!',
+                                    'GSTIN verified & details auto-filled successfully!',
                                     style: GoogleFonts.poppins(),
                                   ),
                                   backgroundColor: Colors.green,
@@ -1336,12 +1349,12 @@ class _kycState extends State<kyc> {
 
       // Retry logic for multipart request
       for (int attempt = 1; attempt <= 3; attempt++) {
-       try {
-      final prefs = await SharedPreferences.getInstance();
+        try {
+          final prefs = await SharedPreferences.getInstance();
 
-      double? latitude = prefs.getDouble('latitude');
-      double? longitude = prefs.getDouble('longitude');
-      String? deviceId = prefs.getString('device_id');
+          double? latitude = prefs.getDouble('latitude');
+          double? longitude = prefs.getDouble('longitude');
+          String? deviceId = prefs.getString('device_id');
           debugPrint('KYC Screen: Upload attempt $attempt/3');
 
           // Create multipart request
@@ -1350,15 +1363,15 @@ class _kycState extends State<kyc> {
           // Add text fields
           request.fields.addAll({
             'cid': _cid,
-            'type': '1023',
-            'lt': latitude?.toString() ?? '',
-          'ln': longitude?.toString() ?? '',
-          'device_id': deviceId ?? '',
+            'type': '1006',
+            'lt': latitude?.toString() ?? '1',
+            'ln': longitude?.toString() ?? '1',
+            'device_id': deviceId ?? '1',
             'cus_id': _cusId?.toString() ?? '',
             'kyc_id': kycId,
             'name': _fullNameController.text,
             'com_name': _businessNameController.text,
-            'gstin': _gstinController.text,
+            'gstin100': _gstinController.text,
             'pan': _panNumberController.text,
             'aadhar': _aadhaarNumberController.text,
             'nature_of_business': _natureOfBusinessSelected ?? 'Distributor',

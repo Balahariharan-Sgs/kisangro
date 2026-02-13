@@ -62,7 +62,7 @@ class _splashscreenState extends State<splashscreen> {
 
     try {
       debugPrint('SplashScreen: Starting to load product data...');
-      await ProductService.loadProductsFromApi();
+     // await ProductService.loadProductsFromApi();
       await ProductService.loadCategoriesFromApi();
       debugPrint(
         'SplashScreen: Product and Category data loaded successfully.',
