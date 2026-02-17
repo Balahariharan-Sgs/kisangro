@@ -62,8 +62,8 @@ class WishlistModel extends ChangeNotifier {
   Future<void>? _loadFuture;
   bool _isInitialized = false;
 
-  static const String _apiUrl = 'https://sgserp.in/erp/api/m_api/';
-  static const String _cid = '23262954';
+  static const String _apiUrl = 'https://erpsmart.in/total/api/m_api/';
+  static const String _cid = '85788578';
   static const String _ln = '322334';
   static const String _lt = '233432';
   static const String _deviceId = '122334';
@@ -110,7 +110,7 @@ class WishlistModel extends ChangeNotifier {
 
   Future<void> _loadWishlistFromApiAndSyncDb() async {
     try {
-      final response = await _callWishlistApi('2024'); // Fetch wishlist type
+      final response = await _callWishlistApi('1019'); // Fetch wishlist type
       if (response['error'] == false && response['data'] is List) {
         // First get current local items
         List<WishlistItem> localItems;
@@ -265,7 +265,7 @@ class WishlistModel extends ChangeNotifier {
 
       // API call
       final response = await _callWishlistApi(
-        '2010',
+        '1016',
         pro_id: targetProId.toString(),
         pro_name: effectiveProduct.title,
       );

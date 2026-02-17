@@ -324,9 +324,16 @@ class _deliveryState extends State<delivery> {
       subTotal = cartModel.totalAmount;
     }
 
-    const double shippingFee = 40.0;
+    const double shippingFee = 01.0;
     const double discount = 0.0;
     final double grandTotal = subTotal + shippingFee - discount;
+
+    // Check if address exists (not empty and not dummy values)
+    bool hasValidAddress = addressModel.currentAddress.isNotEmpty && 
+                          addressModel.currentAddress != 'No address provided' &&
+                          addressModel.currentName.isNotEmpty && 
+                          addressModel.currentName != 'No Name Provided' &&
+                          addressModel.currentName != 'Smart (name)';
 
     return Scaffold(
       backgroundColor: primaryColor,
@@ -419,7 +426,7 @@ class _deliveryState extends State<delivery> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Delivery Address Section - Enhanced with payment3 styling
+                    // Delivery Address Section - Show different UI based on address existence
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(12),
@@ -447,69 +454,107 @@ class _deliveryState extends State<delivery> {
                             ),
                           ),
                           const SizedBox(height: 8),
-                          Text(
-                            addressModel.currentName.isNotEmpty && addressModel.currentName != "Smart (name)"
-                                ? addressModel.currentName
-                                : 'No Name Provided',
-                            style: GoogleFonts.poppins(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                              color: textColor,
+                          
+                          if (hasValidAddress) ...[
+                            // Show saved address
+                            Text(
+                              addressModel.currentName,
+                              style: GoogleFonts.poppins(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: textColor,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            addressModel.currentAddress.isNotEmpty
-                                ? addressModel.currentAddress
-                                : 'No address provided',
-                            style: GoogleFonts.poppins(
-                              fontSize: 14,
-                              color: subtitleColor,
+                            const SizedBox(height: 4),
+                            Text(
+                              addressModel.currentAddress,
+                              style: GoogleFonts.poppins(
+                                fontSize: 14,
+                                color: subtitleColor,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Pincode: ${addressModel.currentPincode}',
-                            style: GoogleFonts.poppins(
-                              fontSize: 14,
-                              color: subtitleColor,
+                            const SizedBox(height: 4),
+                            Text(
+                              'Pincode: ${addressModel.currentPincode}',
+                              style: GoogleFonts.poppins(
+                                fontSize: 14,
+                                color: subtitleColor,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 12),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Container(
-                                width: 70,
-                                height: 40,
-                                alignment: Alignment.centerLeft,
-                                child: Image.asset(
-                                  'assets/delivery.gif',
-                                  fit: BoxFit.contain,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return const SizedBox.shrink();
-                                  },
+                          ] else ...[
+                            // Show message to add address
+                            Center(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 20),
+                                child: Column(
+                                  children: [
+                                    Icon(
+                                      Icons.location_off_outlined,
+                                      size: 48,
+                                      color: subtitleColor,
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      'No delivery address found',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: textColor,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Please add a delivery address to continue',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 14,
+                                        color: subtitleColor,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ],
                                 ),
                               ),
-                              const SizedBox(width: 8),
-                              Flexible(
-                                child: Text(
-                                  'Deliverable by ${DateFormat('dd MMM yyyy').format(DateTime.now().add(const Duration(days: 3)))}',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 14,
-                                    color: subtitleColor,
+                            ),
+                          ],
+                          
+                          const SizedBox(height: 12),
+                          
+                          // Delivery date (only show if address exists)
+                          if (hasValidAddress)
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Container(
+                                  width: 70,
+                                  height: 40,
+                                  alignment: Alignment.centerLeft,
+                                  child: Image.asset(
+                                    'assets/delivery.gif',
+                                    fit: BoxFit.contain,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return const SizedBox.shrink();
+                                    },
                                   ),
                                 ),
-                              ),
-                            ],
-                          ),
+                                const SizedBox(width: 8),
+                                Flexible(
+                                  child: Text(
+                                    'Deliverable by ${DateFormat('dd MMM yyyy').format(DateTime.now().add(const Duration(days: 3)))}',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 14,
+                                      color: subtitleColor,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                         ],
                       ),
                     ),
 
                     const SizedBox(height: 24),
 
-                    // Change Address Button
+                    // Change Address Button (or Add Address if none exists)
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
@@ -523,12 +568,12 @@ class _deliveryState extends State<delivery> {
                             );
                           },
                           icon: Icon(
-                            Icons.edit,
+                            hasValidAddress ? Icons.edit : Icons.add_location,
                             color: Colors.white,
                             size: 16,
                           ),
                           label: Text(
-                            'Change Address',
+                            hasValidAddress ? 'Change Address' : 'Add Address',
                             style: GoogleFonts.poppins(
                               color: Colors.white,
                               fontSize: 14,
@@ -633,62 +678,64 @@ class _deliveryState extends State<delivery> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         color: const Color(0xFFF5E6D3),
         child: ElevatedButton(
-          onPressed: () {
-            // Get the necessary models
-            final cartModel = Provider.of<CartModel>(context, listen: false);
-            final addressModel = Provider.of<AddressModel>(context, listen: false);
-            
-            // Determine items and total amount
-            List<CartItem> items;
-            double totalAmount = 0.0;
-            
-            if (widget.product != null) {
-              final product = widget.product!;
-              final cartItem = CartItem(
-                cusId: 'buy-now-user',
-                proId: product.selectedUnit.proId,
-                title: product.title,
-                subtitle: product.subtitle,
-                imageUrl: product.imageUrl,
-                category: product.category,
-                selectedUnitSize: product.selectedUnit.size,
-                pricePerUnit: product.sellingPricePerSelectedUnit ?? 0.0,
-                quantity: 1,
-              );
-              items = [cartItem];
-              totalAmount = cartItem.totalPrice;
-            } else {
-              items = cartModel.items;
-              totalAmount = cartModel.totalAmount;
-            }
-            
-            // Add shipping fee
-            const double shippingFee = 40.0;
-            final double grandTotal = totalAmount + shippingFee;
-            
-            // Navigate directly to RazorpayPage
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => RazorpayPage(
-                  orderId: 'ORDER_${DateTime.now().millisecondsSinceEpoch}',
-                  totalAmount: grandTotal,
-                  addressModel: addressModel,
-                  cartItems: items,
-                  paymentMethod: 'RAZORPAY',
-                ),
-              ),
-            );
-          },
+          onPressed: hasValidAddress
+              ? () {
+                  // Get the necessary models
+                  final cartModel = Provider.of<CartModel>(context, listen: false);
+                  final addressModel = Provider.of<AddressModel>(context, listen: false);
+                  
+                  // Determine items and total amount
+                  List<CartItem> items;
+                  double totalAmount = 0.0;
+                  
+                  if (widget.product != null) {
+                    final product = widget.product!;
+                    final cartItem = CartItem(
+                      cusId: 'buy-now-user',
+                      proId: product.selectedUnit.proId,
+                      title: product.title,
+                      subtitle: product.subtitle,
+                      imageUrl: product.imageUrl,
+                      category: product.category,
+                      selectedUnitSize: product.selectedUnit.size,
+                      pricePerUnit: product.sellingPricePerSelectedUnit ?? 0.0,
+                      quantity: 1,
+                    );
+                    items = [cartItem];
+                    totalAmount = cartItem.totalPrice;
+                  } else {
+                    items = cartModel.items;
+                    totalAmount = cartModel.totalAmount;
+                  }
+                  
+                  // Add shipping fee
+                  const double shippingFee = 40.0;
+                  final double grandTotal = totalAmount + shippingFee;
+                  
+                  // Navigate directly to RazorpayPage
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => RazorpayPage(
+                        orderId: 'ORDER_${DateTime.now().millisecondsSinceEpoch}',
+                        totalAmount: grandTotal,
+                        addressModel: addressModel,
+                        cartItems: items,
+                        paymentMethod: 'RAZORPAY',
+                      ),
+                    ),
+                  );
+                }
+              : null, // Disable button if no address
           style: ElevatedButton.styleFrom(
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8),
             ),
-            backgroundColor: buttonColor,
+            backgroundColor: hasValidAddress ? buttonColor : Colors.grey,
             minimumSize: const Size(double.infinity, 50),
           ),
           child: Text(
-            'Proceed to Payment',
+            hasValidAddress ? 'Proceed to Payment' : 'Add Address to Continue',
             style: GoogleFonts.poppins(
               color: Colors.white,
               fontSize: 18,
@@ -730,4 +777,3 @@ class DottedLinePainter extends CustomPainter {
   @override
   bool shouldRepaint(CustomPainter oldDelegate) => false;
 }
-

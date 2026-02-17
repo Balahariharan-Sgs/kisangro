@@ -452,13 +452,11 @@ class _cartState extends State<Cart> {
             );
           }
 
-          final double subtotal = cart.totalAmount;
-          final double gst = subtotal * 0.18;
-          final double discount = subtotal * 0.03;
-          final double shipping = 90.00;
-          final double grandTotal = subtotal + gst + shipping - discount;
+          // FIX: Use cart.totalAmount directly without adding extra fees
+          // The cart.totalAmount should already include all applicable charges
+          final double grandTotal = cart.totalAmount;
 
-          debugPrint('Cart: Subtotal=₹$subtotal, GST=₹$gst, Discount=₹$discount, GrandTotal=₹$grandTotal');
+          debugPrint('Cart: Total Amount=₹$grandTotal');
 
           if (cart.items.isEmpty) {
             return Container(
