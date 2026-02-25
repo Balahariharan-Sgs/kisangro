@@ -56,7 +56,7 @@ class _licence4State extends State<licence4> {
 
   final List<RegExp> _datePatterns = [
     RegExp(
-      r'(?:Valid\s+upto|Valid\s+up\s+to|Expiry\s*Date)\s*:?\s*(\d{1,2}[\.\-\/]\d{1,2[\.\-\/]\d{4})',
+      r'(?:Valid\s+upto|Valid\s+up\s+to|Expiry\s*Date)\s*:?\s*(\d{1,2}[\.\-\/]\d{1,2}[\.\-\/]\d{4})',
       caseSensitive: false,
     ),
     RegExp(r'\b(\d{1,2}[\.\-\/]\d{1,2}[\.\-\/]\d{4})\b'),
@@ -97,9 +97,40 @@ class _licence4State extends State<licence4> {
     }
   }
 
-  // Retrieve license data from API using type 1048 with actual customer ID
+  // Download file from URL and convert to Uint8List
+  Future<Uint8List?> _downloadFileFromUrl(String url) async {
+    try {
+      debugPrint('Downloading file from URL: $url');
+      final response = await http.get(Uri.parse(url)).timeout(
+        const Duration(seconds: 30),
+      );
+      
+      if (response.statusCode == 200) {
+        debugPrint('File downloaded successfully, size: ${response.bodyBytes.length} bytes');
+        return response.bodyBytes;
+      } else {
+        debugPrint('Failed to download file: ${response.statusCode}');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('Error downloading file: $e');
+      return null;
+    }
+  }
+
+  // Determine if URL points to an image or PDF
+  bool _isImageUrl(String url) {
+    final lowerUrl = url.toLowerCase();
+    return lowerUrl.endsWith('.jpg') || 
+           lowerUrl.endsWith('.jpeg') || 
+           lowerUrl.endsWith('.png') || 
+           lowerUrl.endsWith('.gif') ||
+           lowerUrl.endsWith('.bmp');
+  }
+
+  // Retrieve license data from API using type 1015 with actual customer ID
   Future<Map<String, dynamic>?> _retrieveLicenseData() async {
-    const String apiUrl = 'https://sgserp.in/erp/api/m_api/';
+    const String apiUrl = 'https://erpsmart.in/total/api/m_api/';
 
     // Wait for customer ID to be loaded if not already
     if (_actualCustomerId == null) {
@@ -113,11 +144,11 @@ class _licence4State extends State<licence4> {
     }
 
     try {
-      final deviceId = "1234";
-      final cid = "23262954";
-      final ln = "12";
-      final lt = "123";
-      final type = "1048";
+      final deviceId = "12345";
+      final cid = "85788578";
+      final ln = "145";
+      final lt = "145";
+      final type = "1015";
       final id = _actualCustomerId!; // Use the actual customer ID
 
       final response = await http
@@ -129,7 +160,7 @@ class _licence4State extends State<licence4> {
               'lt': lt,
               'device_id': deviceId,
               'type': type,
-              'id': id, // Use customer ID instead of hardcoded "116"
+              'cus_id': id, // Use cus_id parameter for this API
             },
           )
           .timeout(const Duration(seconds: 30));
@@ -144,8 +175,38 @@ class _licence4State extends State<licence4> {
         if (responseData['status'] == 'success' &&
             responseData['data'] != null) {
           final List<dynamic> dataList = responseData['data'];
+          
+          // Create a merged map to hold both pesticide and fertilizer data
+          final Map<String, dynamic> mergedData = {};
+          
           if (dataList.isNotEmpty) {
-            return dataList.first as Map<String, dynamic>;
+            // Iterate through each item in the data list
+            for (var item in dataList) {
+              if (item['pesticides'] != null) {
+                // Add pesticide data
+                final pesticideData = item['pesticides'];
+                mergedData['pl_no'] = pesticideData['pl_no'];
+                mergedData['pesticide_expire_date'] = pesticideData['expire_date'];
+                mergedData['pesticide_file_url'] = pesticideData['file_url'];
+                mergedData['pesticide_pdf_file'] = pesticideData['pdf_file'];
+              } else if (item['fertilizers'] != null) {
+                // Add fertilizer data
+                final fertilizerData = item['fertilizers'];
+                mergedData['fl_no'] = fertilizerData['fl_no'];
+                mergedData['fertilizer_expire_date'] = fertilizerData['expire_date'];
+                mergedData['fertilizer_file_url'] = fertilizerData['file_url'];
+                mergedData['fertilizer_pdf_file'] = fertilizerData['pdf_file'];
+              }
+            }
+            
+            // For backward compatibility, also set expire_date if both have same date
+            if (mergedData['pesticide_expire_date'] != null) {
+              mergedData['expire_date'] = mergedData['pesticide_expire_date'];
+            } else if (mergedData['fertilizer_expire_date'] != null) {
+              mergedData['expire_date'] = mergedData['fertilizer_expire_date'];
+            }
+            
+            return mergedData;
           }
         }
       }
@@ -165,49 +226,115 @@ class _licence4State extends State<licence4> {
     final apiLicenseData = await _retrieveLicenseData();
     if (apiLicenseData != null) {
       setState(() {
-        // Load pesticide license if available
-        if (apiLicenseData['pl_no'] != null &&
-            apiLicenseData['pl_no'].toString().isNotEmpty) {
-          _insecticideLicenseController.text =
-              apiLicenseData['pl_no'].toString();
-        }
+        _isLoading = true;
+      });
 
-        // Load fertilizer license if available
-        if (apiLicenseData['fl_no'] != null &&
-            apiLicenseData['fl_no'].toString().isNotEmpty) {
-          _fertilizerLicenseController.text =
-              apiLicenseData['fl_no'].toString();
-        }
+      // Load pesticide license if available
+      if (apiLicenseData['pl_no'] != null &&
+          apiLicenseData['pl_no'].toString().isNotEmpty) {
+        _insecticideLicenseController.text =
+            apiLicenseData['pl_no'].toString();
+      }
 
-        // Parse expiry date if available
-        if (apiLicenseData['expire_date'] != null &&
-            apiLicenseData['expire_date'].toString().isNotEmpty) {
-          final expireDate = _parseDate(
-            apiLicenseData['expire_date'].toString(),
-          );
-          if (expireDate != null) {
-            _insecticideExpirationDate = expireDate;
-            _fertilizerExpirationDate = expireDate;
+      // Load fertilizer license if available
+      if (apiLicenseData['fl_no'] != null &&
+          apiLicenseData['fl_no'].toString().isNotEmpty) {
+        _fertilizerLicenseController.text =
+            apiLicenseData['fl_no'].toString();
+      }
+
+      // Parse pesticide expiry date if available
+      if (apiLicenseData['pesticide_expire_date'] != null &&
+          apiLicenseData['pesticide_expire_date'].toString().isNotEmpty) {
+        final expireDate = _parseDate(
+          apiLicenseData['pesticide_expire_date'].toString(),
+        );
+        if (expireDate != null) {
+          _insecticideExpirationDate = expireDate;
+          // Check if it's a permanent license (1970-01-01)
+          if (apiLicenseData['pesticide_expire_date'].toString() == '1970-01-01') {
+            _insecticideNoExpiry = true;
           }
         }
-
-        // Handle PDF file if available
-        if (apiLicenseData['pdf_file_base64'] != null &&
-            apiLicenseData['pdf_file_base64'].toString().isNotEmpty) {
-          try {
-            final pdfBytes = base64Decode(apiLicenseData['pdf_file_base64']);
-            _insecticideImageBytes = pdfBytes;
-            _fertilizerImageBytes = pdfBytes;
-            _insecticideIsImage = false;
-            _fertilizerIsImage = false;
-          } catch (e) {
-            debugPrint('Error decoding PDF base64: $e');
+      }
+      
+      // Parse fertilizer expiry date if available
+      if (apiLicenseData['fertilizer_expire_date'] != null &&
+          apiLicenseData['fertilizer_expire_date'].toString().isNotEmpty) {
+        final expireDate = _parseDate(
+          apiLicenseData['fertilizer_expire_date'].toString(),
+        );
+        if (expireDate != null) {
+          _fertilizerExpirationDate = expireDate;
+          // Check if it's a permanent license (1970-01-01)
+          if (apiLicenseData['fertilizer_expire_date'].toString() == '1970-01-01') {
+            _fertilizerNoExpiry = true;
           }
         }
+      }
+
+      // Download pesticide file if URL exists
+      if (apiLicenseData['pesticide_file_url'] != null &&
+          apiLicenseData['pesticide_file_url'].toString().isNotEmpty) {
+        _downloadFileFromUrl(apiLicenseData['pesticide_file_url'].toString())
+            .then((bytes) {
+          if (bytes != null) {
+            setState(() {
+              _insecticideImageBytes = bytes;
+              _insecticideIsImage = _isImageUrl(apiLicenseData['pesticide_file_url'].toString());
+            });
+            
+            // Save to provider as well
+            licenseProvider.setPesticideLicense(
+              imageBytes: _insecticideImageBytes,
+              isImage: _insecticideIsImage,
+              licenseNumber: _insecticideLicenseController.text,
+              expirationDate: _insecticideExpirationDate,
+              noExpiry: _insecticideNoExpiry,
+              displayDate: _insecticideNoExpiry
+                  ? 'Permanent'
+                  : (_insecticideExpirationDate != null
+                      ? DateFormat('dd/MM/yyyy').format(_insecticideExpirationDate!)
+                      : null),
+            );
+          }
+        });
+      }
+      
+      // Download fertilizer file if URL exists
+      if (apiLicenseData['fertilizer_file_url'] != null &&
+          apiLicenseData['fertilizer_file_url'].toString().isNotEmpty) {
+        _downloadFileFromUrl(apiLicenseData['fertilizer_file_url'].toString())
+            .then((bytes) {
+          if (bytes != null) {
+            setState(() {
+              _fertilizerImageBytes = bytes;
+              _fertilizerIsImage = _isImageUrl(apiLicenseData['fertilizer_file_url'].toString());
+            });
+            
+            // Save to provider as well
+            licenseProvider.setFertilizerLicense(
+              imageBytes: _fertilizerImageBytes,
+              isImage: _fertilizerIsImage,
+              licenseNumber: _fertilizerLicenseController.text,
+              expirationDate: _fertilizerExpirationDate,
+              noExpiry: _fertilizerNoExpiry,
+              displayDate: _fertilizerNoExpiry
+                  ? 'Permanent'
+                  : (_fertilizerExpirationDate != null
+                      ? DateFormat('dd/MM/yyyy').format(_fertilizerExpirationDate!)
+                      : null),
+            );
+          }
+        });
+      }
+
+      setState(() {
+        _isLoading = false;
       });
     }
 
-    // Load from local provider if no API data
+    // Load from local provider if no API data or as fallback
     final pesticideData = licenseProvider.pesticideLicense;
     if (pesticideData != null) {
       setState(() {
@@ -267,7 +394,7 @@ class _licence4State extends State<licence4> {
     return false;
   }
 
-  // Pesticide API call (type: 1045)
+  // Pesticide API call (type: 1011)
   Future<bool> _uploadPesticideLicense({
     required String cid,
     required String cusId,
@@ -288,7 +415,7 @@ class _licence4State extends State<licence4> {
       String? deviceId = prefs.getString('device_id');
       final request = http.MultipartRequest('POST', Uri.parse(apiUrl));
 
-      // Add fields for pesticide API (type: 1045)
+      // Add fields for pesticide API (type: 1011)
       request.fields.addAll({
         'cid': cid,
         'cus_id': cusId,
@@ -1051,7 +1178,7 @@ class _licence4State extends State<licence4> {
                       CircularProgressIndicator(color: orangeColor),
                       const SizedBox(height: 20),
                       Text(
-                        'Processing file...',
+                        'Loading license data...',
                         style: GoogleFonts.poppins(color: textColor),
                       ),
                     ],

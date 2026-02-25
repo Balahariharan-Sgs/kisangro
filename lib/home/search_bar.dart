@@ -8,6 +8,7 @@ import 'package:kisangro/models/cart_model.dart';
 import 'package:kisangro/models/wishlist_model.dart';
 import 'dart:async';
 import 'package:collection/collection.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -26,6 +27,8 @@ class _SearchScreenState extends State<SearchScreen> {
   List<Product> _searchSuggestions = [];
   OverlayEntry? _overlayEntry;
   bool _showSuggestions = false;
+  final List<String> _recentSearchQueries = [];
+  static const String RECENT_SEARCHES_KEY = 'recent_searches';
 
   @override
   void initState() {
@@ -142,6 +145,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   ),
                   onTap: () {
                     _searchController.text = product.title;
+                    _saveRecentSearch(product.title);
                     _navigateToSearchResults(product.title);
                     _removeOverlay();
                   },
@@ -169,16 +173,108 @@ class _SearchScreenState extends State<SearchScreen> {
     });
   }
 
+  Future<void> _saveRecentSearch(String query) async {
+    if (query.isEmpty) return;
+    
+    final prefs = await SharedPreferences.getInstance();
+    List<String> searches = prefs.getStringList(RECENT_SEARCHES_KEY) ?? [];
+    
+    // Remove if already exists
+    searches.remove(query);
+    // Add to beginning
+    searches.insert(0, query);
+    // Keep only last 10 searches
+    if (searches.length > 10) {
+      searches = searches.sublist(0, 10);
+    }
+    
+    await prefs.setStringList(RECENT_SEARCHES_KEY, searches);
+    _loadRecentSearchProducts();
+  }
+
+Future<void> _loadRecentSearchProducts() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final recentQueries = prefs.getStringList(RECENT_SEARCHES_KEY) ?? [];
+    
+    if (recentQueries.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _recentSearches = [];
+        });
+      }
+      return;
+    }
+    
+    final allProducts = ProductService.getAllProducts();
+    final recentProducts = <Product>[];
+    final validQueries = <String>[];
+    
+    for (final query in recentQueries) {
+      try {
+        // Try to find exact match first
+        Product? matchedProduct;
+        
+        for (final product in allProducts) {
+          if (product.title.toLowerCase() == query.toLowerCase()) {
+            matchedProduct = product;
+            break;
+          }
+        }
+        
+        // If no exact match, try contains
+        if (matchedProduct == null) {
+          for (final product in allProducts) {
+            if (product.title.toLowerCase().contains(query.toLowerCase())) {
+              matchedProduct = product;
+              break;
+            }
+          }
+        }
+        
+        // If we found a match and it's not already in the list, add it
+        if (matchedProduct != null) {
+          if (!recentProducts.any((p) => p.title == matchedProduct!.title)) {
+            recentProducts.add(matchedProduct!);
+            validQueries.add(query);
+          }
+        }
+      } catch (e) {
+        debugPrint('Error processing query "$query": $e');
+        continue;
+      }
+    }
+    
+    // Update stored queries to only include valid ones
+    if (validQueries.length != recentQueries.length) {
+      await prefs.setStringList(RECENT_SEARCHES_KEY, validQueries);
+    }
+    
+    if (mounted) {
+      setState(() {
+        _recentSearches = recentProducts.take(5).toList();
+      });
+    }
+  } catch (e) {
+    debugPrint('Error loading recent search products: $e');
+    if (mounted) {
+      setState(() {
+        _recentSearches = [];
+      });
+    }
+  }
+}
+
   Future<void> _loadInitialData() async {
     await ProductService().initialize();
     if (mounted) {
       setState(() {
         final allProducts = ProductService.getAllProducts();
         if (allProducts.isNotEmpty) {
-          _recentSearches = allProducts.reversed.take(5).toList();
           _trendingSearches = allProducts.take(5).toList();
         }
       });
+      _loadRecentSearchProducts();
     }
   }
 
@@ -210,6 +306,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   void _navigateToSearchResults(String query) {
     if (query.isEmpty) return;
+    _saveRecentSearch(query);
     _removeOverlay();
     _searchFocusNode.unfocus();
 
@@ -222,6 +319,22 @@ class _SearchScreenState extends State<SearchScreen> {
         ),
       ),
     );
+  }
+
+  void _clearAllRecentSearches() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(RECENT_SEARCHES_KEY);
+    setState(() {
+      _recentSearches = [];
+    });
+  }
+
+  void _removeRecentSearch(String query) async {
+    final prefs = await SharedPreferences.getInstance();
+    List<String> searches = prefs.getStringList(RECENT_SEARCHES_KEY) ?? [];
+    searches.remove(query);
+    await prefs.setStringList(RECENT_SEARCHES_KEY, searches);
+    _loadRecentSearchProducts();
   }
 
   @override
@@ -306,31 +419,47 @@ class _SearchScreenState extends State<SearchScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text("Recent Searches",
-                            style: GoogleFonts.poppins(
-                                fontSize: isTablet ? 18 : 16,
-                                fontWeight: FontWeight.bold)),
-                        SizedBox(height: verticalSpacing),
-                        Wrap(
-                          spacing: isTablet ? 15 : 10,
-                          runSpacing: isTablet ? 15 : 10,
-                          children: _recentSearches.map((product) =>
-                              _buildProductTag(product, isTablet)).toList(),
-                        ),
-                        SizedBox(height: verticalSpacing * 2),
-                        const Divider(),
-                        SizedBox(height: verticalSpacing),
-                        Text("Trending Searches",
-                            style: GoogleFonts.poppins(
-                                fontSize: isTablet ? 18 : 16,
-                                fontWeight: FontWeight.bold)),
-                        SizedBox(height: verticalSpacing),
-                        Wrap(
-                          spacing: isTablet ? 15 : 10,
-                          runSpacing: isTablet ? 15 : 10,
-                          children: _trendingSearches.map((product) =>
-                              _buildProductTag(product, isTablet)).toList(),
-                        ),
+                        if (_recentSearches.isNotEmpty) ...[
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text("Recent Searches",
+                                  style: GoogleFonts.poppins(
+                                      fontSize: isTablet ? 18 : 16,
+                                      fontWeight: FontWeight.bold)),
+                              TextButton(
+                                onPressed: _clearAllRecentSearches,
+                                child: Text(
+                                  "Clear All",
+                                  style: GoogleFonts.poppins(
+                                    color: const Color(0xffEB7720),
+                                    fontSize: isTablet ? 14 : 12,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          SizedBox(height: verticalSpacing),
+                          Wrap(
+                            spacing: isTablet ? 15 : 10,
+                            runSpacing: isTablet ? 15 : 10,
+                            children: _recentSearches.map((product) =>
+                                _buildRecentSearchTag(product, isTablet)).toList(),
+                          ),
+                        ],
+                        if (_recentSearches.isEmpty)
+                          Padding(
+                            padding: EdgeInsets.symmetric(vertical: verticalSpacing * 2),
+                            child: Center(
+                              child: Text(
+                                "No recent searches",
+                                style: GoogleFonts.poppins(
+                                  color: Colors.grey,
+                                  fontSize: isTablet ? 16 : 14,
+                                ),
+                              ),
+                            ),
+                          ),
                       ],
                     ),
                   ),
@@ -342,7 +471,7 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  Widget _buildProductTag(Product product, bool isTablet) {
+  Widget _buildRecentSearchTag(Product product, bool isTablet) {
     return GestureDetector(
       onTap: () {
         _navigateToSearchResults(product.title);
@@ -382,9 +511,16 @@ class _SearchScreenState extends State<SearchScreen> {
             Text(product.title,
                 style: GoogleFonts.poppins(fontSize: isTablet ? 16 : 14)),
             SizedBox(width: isTablet ? 8 : 5),
-            Icon(Icons.trending_up,
-                size: isTablet ? 18 : 14,
-                color: Color(0xffEB7720)),
+            IconButton(
+              icon: Icon(Icons.close,
+                  size: isTablet ? 18 : 14,
+                  color: Colors.grey),
+              onPressed: () {
+                _removeRecentSearch(product.title);
+              },
+              padding: EdgeInsets.zero,
+              constraints: BoxConstraints(),
+            ),
           ],
         ),
       ),
@@ -480,24 +616,20 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
       _searchError = null;
     });
 
-    if (query.isEmpty && (_selectedCategory == null || _selectedCategory == 'All') && _selectedSortBy == null) {
-      setState(() {
-        _searchResults = [];
-        _isSearching = false;
-      });
-      return;
-    }
-
     try {
-      List<Product> results = ProductService.searchProductsLocally(query);
+      List<Product> results = [];
+      
+      if (query.isNotEmpty) {
+        results = ProductService.searchProductsLocally(query);
+      }
 
       // Apply category filter
-      if (_selectedCategory != null && _selectedCategory != 'All') {
+      if (_selectedCategory != null && _selectedCategory != 'All' && _selectedCategory != 'All Categories') {
         results = results.where((product) => product.category == _selectedCategory).toList();
       }
 
       // Apply sorting
-      if (_selectedSortBy != null) {
+      if (_selectedSortBy != null && results.isNotEmpty) {
         results.sort((a, b) {
           final double priceA = a.sellingPricePerSelectedUnit ?? a.pricePerSelectedUnit ?? 0.0;
           final double priceB = b.sellingPricePerSelectedUnit ?? b.pricePerSelectedUnit ?? 0.0;

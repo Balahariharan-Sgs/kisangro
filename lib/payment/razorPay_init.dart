@@ -21,11 +21,12 @@ Future<String> getCusId() async {
   } else if (cusIdValue is String) {
     return cusIdValue;
   }
-  return '100'; // Default fallback
+  return '100'; 
 }
 
 // Function to get mobile number from shared preferences
 Future<String> getMobileNumber() async {
+
   final prefs = await SharedPreferences.getInstance();
   final String? mobile = prefs.getString('mobile_number');
   return mobile ?? '9486121229'; // Fallback only if not found
@@ -34,6 +35,8 @@ Future<String> getMobileNumber() async {
 class RazorpayPage extends StatefulWidget {
   final String orderId;
   final double totalAmount;
+
+  
   final AddressModel addressModel;
   final List cartItems;
   final String paymentMethod;
@@ -161,83 +164,91 @@ class _RazorpayPageState extends State<RazorpayPage> {
   }
 
   // Notify payment status to backend with real-time cus_id
-  Future<void> _notifyPaymentStatus({
-    required String paymentId,
-    required String status,
-    required String amount,
-    required String orderId,
-  }) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      double? latitude = prefs.getDouble('latitude');
-      double? longitude = prefs.getDouble('longitude');
-      String? deviceId = prefs.getString('device_id');
-      
-      // Use the real-time cus_id from state
-      String cusId = _cusId.isEmpty ? await getCusId() : _cusId;
+ Future<void> _notifyPaymentStatusWithProducts({
+  required String paymentId,
+  required String status,
+  required String amount,
+  required String orderId,
+  required List<CartItem> cartItems, // Add this
+}) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    double? latitude = prefs.getDouble('latitude');
+    double? longitude = prefs.getDouble('longitude');
+    String? deviceId = prefs.getString('device_id');
+    String cusId = _cusId.isEmpty ? await getCusId() : _cusId;
 
-      debugPrint('Notifying payment status: $status for $paymentId with cus_id: $cusId');
-      
-      final response = await http.post(
-        Uri.parse('https://erpsmart.in/total/api/m_api/'),
-        body: {
-          'cid': '85788578',
-          'type': '1009', // Payment status update type
-          'lt': latitude?.toString() ?? '1',
-          'ln': longitude?.toString() ?? '1',
-          'device_id': deviceId ?? '1',
-          'cus_id': cusId, // REAL-TIME customer ID
-          'payment_id': paymentId,
-          'order_id': orderId,
-          'status': status,
-          'amount': amount,
-          'payment_method': 'RAZORPAY',
-        },
-      );
+    // Format products as JSON string
+    List<Map<String, dynamic>> productsList = cartItems.map((item) => {
+      'pro_id': item.proId,
+      'product_name': item.title,
+      'quantity': item.quantity,
+      'unit_size': item.selectedUnitSize,
+      'price_per_unit': item.pricePerUnit,
+      'total_price': item.totalPrice,
+    }).toList();
 
-      if (response.statusCode == 200) {
-        String responseBody = response.body;
-        int startIndex = responseBody.indexOf('{');
-        if (startIndex != -1) {
-          responseBody = responseBody.substring(startIndex);
-          final data = json.decode(responseBody);
-          debugPrint('Payment Status Notification Response: $data');
-        }
-      }
-    } catch (e) {
-      debugPrint('Error notifying payment status: $e');
-    }
+    debugPrint('Notifying payment status with products: $productsList');
+    
+    final response = await http.post(
+      Uri.parse('https://erpsmart.in/total/api/m_api/'),
+      body: {
+        'cid': '85788578',
+        'type': '1032',
+        'lt': latitude?.toString() ?? '1',
+        'ln': longitude?.toString() ?? '1',
+        'device_id': deviceId ?? '1',
+        'cus_id': cusId,
+        'payment_id': paymentId,
+        //'order_id': orderId,
+        'status': status,
+        'amount': amount,
+        'payment_method': 'RAZORPAY',
+        'products': json.encode(productsList), // Add products
+        'address': widget.addressModel.currentAddress, // Add address
+        'pincode': widget.addressModel.currentPincode,
+        'customer_name': widget.addressModel.currentName,
+      },
+    );
+    debugPrint('Payment status notification response: ${response.body}');
+    
+  } catch (e) {
+    debugPrint('Error notifying payment status: $e');
   }
+}
 
   // Auto cancel order on payment failure with real-time cus_id
-  Future<void> _autoCancelOrder() async {
-     try {
-      final prefs = await SharedPreferences.getInstance();
-      double? latitude = prefs.getDouble('latitude');
-      double? longitude = prefs.getDouble('longitude');
-      String? deviceId = prefs.getString('device_id');
+  // Future<void> _autoCancelOrder() async {
+  //    try {
+  //     final prefs = await SharedPreferences.getInstance();
+  //     double? latitude = prefs.getDouble('latitude');
+  //     double? longitude = prefs.getDouble('longitude');
+  //     String? deviceId = prefs.getString('device_id');
       
-      String cusId = _cusId.isEmpty ? await getCusId() : _cusId;
+  //     String cusId = _cusId.isEmpty ? await getCusId() : _cusId;
 
-      debugPrint('Auto cancelling order: ${widget.orderId} for customer: $cusId');
+  //     debugPrint('Auto cancelling order: ${widget.orderId} for customer: $cusId');
       
-      final response = await http.post(
-        Uri.parse('https://erpsmart.in/total/api/m_api/'),
-        body: {
-          'cid': '85788578',
-          'type': '1010', // Cancel order type - adjust based on your API
-             'lt': latitude?.toString() ?? '1',
-          'ln': longitude?.toString() ?? '1',
-          'device_id': deviceId ?? '1',
-          'cus_id': cusId, // REAL-TIME customer ID
-          'order_id': widget.orderId,
-        },
-      );
-      debugPrint('Auto Cancel Response: ${response.body}');
-    } catch (e) {
-      debugPrint('Error auto cancelling order: $e');
-    }
-  }
+  //     final response = await http.post(
+  //       Uri.parse('https://erpsmart.in/total/api/m_api/'),
+  //       body: {
+  //         'cid': '85788578',
+  //         'type': '1010', // Cancel order type - adjust based on your API
+  //         'lt': latitude?.toString() ?? '1',
+  //         'ln': longitude?.toString() ?? '1',
+  //         'device_id': deviceId ?? '1',
+  //         'cus_id': cusId, // REAL-TIME customer ID
+  //       //  'order_id': widget.orderId,
+  //       },
+  //     );
+  //     debugPrint('Auto Cancel Response: ${response.body}');
+  //   } catch (e) {
+  //     debugPrint('Error auto cancelling order: $e');
+      
+  //   }
+  // }
+
+
 
   // Show order processing dialog
   void _showOrderProcessingDialog() {
@@ -374,11 +385,12 @@ class _RazorpayPageState extends State<RazorpayPage> {
     }
 
     // Notify backend about success with real-time cus_id
-    await _notifyPaymentStatus(
+    await _notifyPaymentStatusWithProducts(
       paymentId: response.paymentId ?? '',
       status: 'success',
       amount: widget.totalAmount.toString(),
       orderId: widget.orderId,
+      cartItems: widget.cartItems.cast<CartItem>(),
     );
 
     setState(() {
@@ -503,15 +515,16 @@ class _RazorpayPageState extends State<RazorpayPage> {
     }
 
     // Notify backend about failure with real-time cus_id
-    await _notifyPaymentStatus(
+    await _notifyPaymentStatusWithProducts(
       paymentId: 'failed_${DateTime.now().millisecondsSinceEpoch}',
       status: 'failed',
       amount: widget.totalAmount.toString(),
       orderId: widget.orderId,
+      cartItems: widget.cartItems.cast<CartItem>(),
     );
 
     // Auto-cancel the order on payment failure
-    await _autoCancelOrder();
+   // await _autoCancelOrder();
 
     if (mounted) {
       setState(() {
@@ -538,11 +551,12 @@ class _RazorpayPageState extends State<RazorpayPage> {
 
   void _handleExternalWallet(ExternalWalletResponse response) async {
     // Notify backend with real-time cus_id
-    await _notifyPaymentStatus(
+    await _notifyPaymentStatusWithProducts(
       paymentId: 'external_wallet_${DateTime.now().millisecondsSinceEpoch}',
       status: 'pending',
       amount: widget.totalAmount.toString(),
       orderId: widget.orderId,
+      cartItems: widget.cartItems.cast<CartItem>(),
     );
 
     setState(() {
@@ -675,7 +689,7 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen> {
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(
-        builder: (context) => const Bot(initialIndex: 0, showRewardsPopup: true),
+        builder: (context) => const Bot(initialIndex: 0, showRewardsPopup: false),
       ),
       (Route<dynamic> route) => false,
     );

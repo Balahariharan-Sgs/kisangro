@@ -83,7 +83,7 @@ class Product extends ChangeNotifier {
     required this.imageUrl,
     required this.category,
     required List<ProductSize> availableSizes,
-    int? initialSelectedUnitProId, // Pass the pro_id of the initially selected unit
+    int? initialSelectedUnitProId,  // Pass the pro_id of the initially selected unit
   })  : _mainProductId = mainProductId,
         availableSizes = availableSizes.isEmpty
             ? [ProductSize(proId: 0, size: 'Unit', price: 0.0, sellingPrice: 0.0)] // Default if empty

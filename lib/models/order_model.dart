@@ -93,6 +93,11 @@ class Order {
   OrderStatus status;
   DateTime? deliveredDate;
   final String paymentMethod;
+  
+  // Additional fields for cancelled orders
+  String? cancellationReason;
+  String? refundStatus;
+  Map<String, dynamic>? bankData;
 
   Order({
     required this.id,
@@ -101,7 +106,11 @@ class Order {
     required this.orderDate,
     this.deliveredDate,
     required this.status,
-    required this.paymentMethod, String? paymentId,
+    required this.paymentMethod,
+    this.cancellationReason,
+    this.refundStatus,
+    this.bankData,
+    String? paymentId,
   });
 
   void updateStatus(OrderStatus newStatus) {
@@ -121,6 +130,9 @@ class Order {
     'deliveredDate': deliveredDate?.toIso8601String(),
     'status': status.index,
     'paymentMethod': paymentMethod,
+    'cancellationReason': cancellationReason,
+    'refundStatus': refundStatus,
+    'bankData': bankData,
   };
 
   factory Order.fromJson(Map<String, dynamic> json) => Order(
@@ -137,6 +149,9 @@ class Order {
             : null,
     status: OrderStatus.values[json['status'] as int],
     paymentMethod: json['paymentMethod'] as String,
+    cancellationReason: json['cancellationReason'] as String?,
+    refundStatus: json['refundStatus'] as String?,
+    bankData: json['bankData'] as Map<String, dynamic>?,
   );
 }
 
@@ -155,25 +170,34 @@ class OrderModel extends ChangeNotifier {
 
   Future<void> _loadOrders() async {
     try {
-      // Clear local database for fresh API data during testing
-      // Remove this line in production if you want to keep local cache
+      // IMPORTANT: Always clear local database to ensure fresh API data
+      // This ensures we NEVER show products from local storage
       await _dbHelper.clearOrders();
+      
+      // Clear in-memory orders
+      _orders.clear();
 
-      // First try to load from API
-      await _loadOrdersFromApi();
+      // Load ONLY from API - fetch all order types
+      await _loadOrdersFromApi(type: '1031'); // For booked orders
+      await _loadCancelledOrdersFromApi(); // For cancelled orders
 
-      // If no orders from API, load from local DB
-      if (_orders.isEmpty) {
-        _orders.clear();
-        _orders.addAll(await _dbHelper.getOrders());
-      }
+      // DO NOT load from local DB - we only want API data
+      // if (_orders.isEmpty) {
+      //   _orders.clear();
+      //   _orders.addAll(await _dbHelper.getOrders());
+      // }
 
       // Sort orders by date (newest first)
       _sortOrdersByDate();
 
       notifyListeners();
+      
+      debugPrint('✅ Loaded ${_orders.length} orders from API only');
     } catch (e) {
       debugPrint('Error loading orders: $e');
+      // Even on error, ensure we have empty list, not local data
+      _orders.clear();
+      notifyListeners();
     }
   }
 
@@ -189,29 +213,194 @@ class OrderModel extends ChangeNotifier {
     _orders.clear();
     await _dbHelper.clearOrders();
 
-    // Load fresh from API
-    await _loadOrdersFromApi();
+    // Load fresh from API only
+    await _loadOrdersFromApi(type: '1031');
+    await _loadCancelledOrdersFromApi();
 
     debugPrint('Orders after force reload:');
     debugOrderCreationProcess();
+    
+    notifyListeners();
   }
 
-  // Enhanced order loading with better error handling
-  Future<void> _loadOrdersFromApi() async {
+  // Method to fetch cancelled orders using type 1017
+  Future<void> _loadCancelledOrdersFromApi() async {
+    try {
+      debugPrint('=== LOADING CANCELLED ORDERS FROM API ===');
+      final response = await _callOrderApi(type: '1017');
+
+      debugPrint('Raw Cancelled Orders API Response: ${response.toString()}');
+
+      if (response['error'] == false) {
+        final dynamic ordersData = response['orders'];
+
+        if (ordersData is List) {
+          final apiOrders = List<Map<String, dynamic>>.from(ordersData);
+          debugPrint('Found ${apiOrders.length} cancelled orders from API');
+
+          for (int i = 0; i < apiOrders.length; i++) {
+            final orderData = apiOrders[i];
+            debugPrint('Processing cancelled order ${i + 1}/${apiOrders.length}: $orderData');
+
+            try {
+              final order = _parseCancelledOrderFromApi(orderData);
+              if (order != null) {
+                debugPrint('Successfully parsed cancelled order with ID: ${order.id} (from API)');
+                
+                // Check if order already exists, if so update it, otherwise add new
+                final existingIndex = _orders.indexWhere((o) => o.id == order.id);
+                if (existingIndex != -1) {
+                  _orders[existingIndex] = order;
+                  // Don't save to local DB - we only want API data
+                  // await _dbHelper.updateOrderStatus(order.id, order.status);
+                } else {
+                  _orders.add(order);
+                  // Don't save to local DB - we only want API data
+                  // await _dbHelper.insertOrder(order);
+                }
+              } else {
+                debugPrint('Failed to parse cancelled order data: $orderData');
+              }
+            } catch (e, stackTrace) {
+              debugPrint('Exception parsing cancelled order: $e');
+              debugPrint('Stack trace: $stackTrace');
+            }
+          }
+
+          _sortOrdersByDate();
+          debugPrint('Successfully loaded/updated cancelled orders from API');
+          notifyListeners();
+        } else {
+          debugPrint('Cancelled orders response data is not a List: ${ordersData.runtimeType}');
+        }
+      } else {
+        debugPrint('API returned error for cancelled orders: ${response['message'] ?? 'Unknown error'}');
+      }
+    } catch (e, stackTrace) {
+      debugPrint('Exception in _loadCancelledOrdersFromApi: $e');
+      debugPrint('Stack trace: $stackTrace');
+    }
+  }
+
+  // Parse cancelled order from API response
+  Order? _parseCancelledOrderFromApi(Map<String, dynamic> orderData) {
+    try {
+      debugPrint('--- Parsing Cancelled Order Data ---');
+      debugPrint('Raw cancelled order data: $orderData');
+
+      // Extract order_id from cancel_data
+      final cancelData = orderData['cancel_data'] as Map<String, dynamic>?;
+      if (cancelData == null) {
+        debugPrint('No cancel_data found in cancelled order');
+        return null;
+      }
+
+      final dynamic orderIdRaw = cancelData['order_id'];
+      debugPrint('Raw cancelled order_id from API: $orderIdRaw');
+
+      String? orderIdFromApi;
+      if (orderIdRaw != null) {
+        orderIdFromApi = orderIdRaw.toString();
+        debugPrint('Using cancelled API order_id: "$orderIdFromApi"');
+      }
+
+      if (orderIdFromApi == null || orderIdFromApi.isEmpty || orderIdFromApi == 'null') {
+        debugPrint('Invalid cancelled order_id, skipping this order');
+        return null;
+      }
+
+      // Parse products
+      final dynamic productsRaw = orderData['products'];
+      debugPrint('Raw cancelled products data: $productsRaw');
+
+      List<OrderedProduct> products = [];
+      if (productsRaw is List) {
+        for (var productData in productsRaw) {
+          try {
+            final orderedProduct = OrderedProduct(
+              id: (productData['product_id'] ?? '').toString(),
+              title: (productData['product_name'] ?? 'Unknown Product').toString(),
+              description: (productData['product_name'] ?? '').toString(),
+              imageUrl: '', // API doesn't provide image for cancelled orders
+              category: '', // API doesn't provide category
+              unit: '1', // Default unit size
+              price: _parseDouble(productData['price']),
+              quantity: _parseInt(productData['qty']),
+              orderId: orderIdFromApi,
+            );
+            products.add(orderedProduct);
+            debugPrint('Added cancelled product: ${orderedProduct.title}');
+          } catch (e) {
+            debugPrint('Error parsing cancelled product: $e');
+          }
+        }
+      }
+
+      debugPrint('Parsed ${products.length} products for cancelled order');
+
+      // Parse order date (use current date as fallback since API doesn't provide date)
+      DateTime orderDate = DateTime.now();
+
+      // Calculate total amount
+      double totalAmount = _parseDouble(orderData['total_price']);
+      if (totalAmount == 0 && products.isNotEmpty) {
+        totalAmount = products.fold(
+          0.0,
+          (sum, product) => sum + (product.price * product.quantity),
+        );
+      }
+      debugPrint('Cancelled order total amount: $totalAmount');
+
+      // Get cancellation details
+      final cancellationReason = cancelData['cancellation_reason'] as String?;
+      final refundStatus = cancelData['refund_status'] as String?;
+      
+      // Get bank data
+      final bankData = orderData['bank_data'] as Map<String, dynamic>?;
+
+      final order = Order(
+        id: orderIdFromApi, // Using the API order_id directly
+        products: products,
+        totalAmount: totalAmount,
+        orderDate: orderDate,
+        status: OrderStatus.cancelled,
+        paymentMethod: 'Online', // Default payment method
+        cancellationReason: cancellationReason,
+        refundStatus: refundStatus,
+        bankData: bankData,
+      );
+
+      debugPrint('Successfully created cancelled order with ID: "${order.id}" (from API)');
+      if (cancellationReason != null) {
+        debugPrint('Cancellation reason: $cancellationReason');
+      }
+      if (refundStatus != null) {
+        debugPrint('Refund status: $refundStatus');
+      }
+
+      return order;
+    } catch (e, stackTrace) {
+      debugPrint('Exception in _parseCancelledOrderFromApi: $e');
+      debugPrint('Stack trace: $stackTrace');
+      return null;
+    }
+  }
+
+  // Enhanced order loading with better error handling - Using type 1031 for booked orders
+  Future<void> _loadOrdersFromApi({String type = '1031'}) async {
     try {
       debugPrint('=== LOADING ORDERS FROM API ===');
-      final response = await _callOrderApi(type: '2022');
+      // Using type 1031 for booked orders
+      final response = await _callOrderApi(type: type);
 
       debugPrint('Raw API Response: ${response.toString()}');
 
-      if (response['error'] == false || response['error'] == 'false') {
+      if (response['status'] == 'success') {
         final dynamic responseData = response['data'];
 
         if (responseData is List) {
           final apiOrders = List<Map<String, dynamic>>.from(responseData);
           debugPrint('Found ${apiOrders.length} orders from API');
-
-          _orders.clear();
 
           for (int i = 0; i < apiOrders.length; i++) {
             final orderData = apiOrders[i];
@@ -222,9 +411,10 @@ class OrderModel extends ChangeNotifier {
             try {
               final order = _parseOrderFromApi(orderData);
               if (order != null) {
-                debugPrint('Successfully parsed order with ID: ${order.id}');
+                debugPrint('Successfully parsed order with ID: ${order.id} (from API)');
                 _orders.add(order);
-                await _dbHelper.insertOrder(order);
+                // Don't save to local DB - we only want API data
+                // await _dbHelper.insertOrder(order);
               } else {
                 debugPrint('Failed to parse order data: $orderData');
               }
@@ -236,7 +426,7 @@ class OrderModel extends ChangeNotifier {
 
           _sortOrdersByDate();
           debugPrint(
-            'Successfully loaded ${_orders.length} orders into memory',
+            'Successfully loaded ${_orders.length} orders from API into memory',
           );
 
           // Debug print all loaded orders
@@ -263,13 +453,13 @@ class OrderModel extends ChangeNotifier {
     }
   }
 
-  // Enhanced parsing with detailed logging
+  // Enhanced parsing with detailed logging - for booked orders
   Order? _parseOrderFromApi(Map<String, dynamic> orderData) {
     try {
       debugPrint('--- Parsing Order Data ---');
       debugPrint('Raw order data: $orderData');
 
-      // Extract order_id first - ensure we get the numeric ID from API
+      // Extract order_id from the new format
       final dynamic orderIdRaw = orderData['order_id'];
       debugPrint(
         'Raw order_id from API: $orderIdRaw (type: ${orderIdRaw.runtimeType})',
@@ -277,11 +467,7 @@ class OrderModel extends ChangeNotifier {
 
       String? orderIdFromApi;
       if (orderIdRaw != null) {
-        // Convert to string, but ensure we're using the actual API ID
         orderIdFromApi = orderIdRaw.toString();
-
-        // If this is a numeric ID from API, use it directly
-        // Don't generate a new ID like "ORDER_1758092969549"
         debugPrint('Using API order_id: "$orderIdFromApi"');
       }
 
@@ -292,25 +478,23 @@ class OrderModel extends ChangeNotifier {
         return null;
       }
 
-      debugPrint('Using API order_id: "$orderIdFromApi"');
-
-      // Parse items
-      final dynamic itemsRaw = orderData['items'];
-      debugPrint('Raw items data: $itemsRaw (type: ${itemsRaw.runtimeType})');
+      // Parse products from the new format
+      final dynamic productsRaw = orderData['products'];
+      debugPrint('Raw products data: $productsRaw (type: ${productsRaw.runtimeType})');
 
       List<OrderedProduct> products = [];
-      if (itemsRaw is List) {
-        for (var productData in itemsRaw) {
+      if (productsRaw is List) {
+        for (var productData in productsRaw) {
           try {
             final orderedProduct = OrderedProduct(
               id: (productData['pro_id'] ?? '').toString(),
-              title: (productData['pro_name'] ?? 'Unknown Product').toString(),
-              description: (productData['technical_name'] ?? '').toString(),
-              imageUrl: (productData['image'] ?? '').toString(),
-              category: (productData['cat_id'] ?? '').toString(),
-              unit: (productData['sizes'] ?? 'Unit').toString(),
+              title: (productData['product_name'] ?? 'Unknown Product').toString(),
+              description: (productData['product_name'] ?? '').toString(), // Using product_name as description
+              imageUrl: (productData['product_image'] ?? '').toString(),
+              category: '', // API doesn't provide category in this format
+              unit: '1', // Default unit size
               price: _parseDouble(productData['price']),
-              quantity: _parseInt(productData['quantity']),
+              quantity: _parseInt(productData['qty']), // Note: using 'qty' not 'quantity'
               orderId: orderIdFromApi,
             );
             products.add(orderedProduct);
@@ -323,41 +507,50 @@ class OrderModel extends ChangeNotifier {
 
       debugPrint('Parsed ${products.length} products');
 
-      // Parse order date
+      // Parse order date from the new format
       DateTime orderDate = DateTime.now();
-      if (products.isNotEmpty) {
-        final firstItem = (orderData['items'] as List).first;
-        if (firstItem['date'] != null) {
-          try {
-            orderDate = DateTime.parse(firstItem['date'].toString());
-            debugPrint('Parsed order date: $orderDate');
-          } catch (e) {
-            debugPrint('Error parsing date, using current date: $e');
+      final dateStr = orderData['order_date'];
+      if (dateStr != null) {
+        try {
+          // Parse date in format "2026-02-23"
+          final parts = dateStr.toString().split('-');
+          if (parts.length == 3) {
+            orderDate = DateTime(
+              int.parse(parts[0]),
+              int.parse(parts[1]),
+              int.parse(parts[2]),
+            );
           }
+          debugPrint('Parsed order date: $orderDate');
+        } catch (e) {
+          debugPrint('Error parsing date, using current date: $e');
         }
       }
 
-      // Calculate total amount
-      double totalAmount = products.fold(
-        0.0,
-        (sum, product) => sum + (product.price * product.quantity),
-      );
-      debugPrint('Calculated total amount: $totalAmount');
+      // Calculate total amount - either from API or from products
+      double totalAmount = _parseDouble(orderData['total_price']);
+      if (totalAmount == 0 && products.isNotEmpty) {
+        totalAmount = products.fold(
+          0.0,
+          (sum, product) => sum + (product.price * product.quantity),
+        );
+      }
+      debugPrint('Total amount: $totalAmount');
 
-      // Parse status
-      final status = _parseOrderStatus(orderData['status']?.toString());
+      // Parse status from the new format
+      final status = _parseOrderStatus(orderData['order_status']?.toString());
       debugPrint('Parsed status: ${status.name}');
 
       final order = Order(
-        id: orderIdFromApi, // This is the critical change - use API ID
+        id: orderIdFromApi, // Using the API order_id directly
         products: products,
         totalAmount: totalAmount,
         orderDate: orderDate,
         status: status,
-        paymentMethod: (orderData['payment_method'] ?? 'Unknown').toString(),
+        paymentMethod: 'Online', // Default payment method
       );
 
-      debugPrint('Successfully created order with final ID: "${order.id}"');
+      debugPrint('Successfully created order with final ID: "${order.id}" (from API)');
       return order;
     } catch (e, stackTrace) {
       debugPrint('Exception in _parseOrderFromApi: $e');
@@ -403,6 +596,7 @@ class OrderModel extends ChangeNotifier {
 
   OrderStatus _parseOrderStatus(String? status) {
     switch (status?.toLowerCase()) {
+      case 'captured': // Added captured status
       case 'booked':
       case 'pending':
       case 'confirmed':
@@ -489,7 +683,7 @@ class OrderModel extends ChangeNotifier {
     debugPrint('Order ID being added: ${order.id}');
     debugPrint('Order status: ${order.status}');
 
-    // Check if this looks like a generated ID
+    // Check if this looks like a generated ID (should not happen now)
     if (order.id.startsWith('ORDER_')) {
       debugPrint('WARNING: Adding order with generated ID instead of API ID');
       debugPrint('This order might not be cancellable via API');
@@ -497,7 +691,8 @@ class OrderModel extends ChangeNotifier {
 
     // Add new order at the beginning of the list (top position)
     _orders.insert(0, order);
-    _dbHelper.insertOrder(order);
+    // Don't save to local DB - we only want API data
+    // _dbHelper.insertOrder(order);
     notifyListeners();
   }
 
@@ -521,7 +716,8 @@ class OrderModel extends ChangeNotifier {
     if (orderIndex != -1) {
       debugPrint('Found order at index $orderIndex, updating status');
       _orders[orderIndex].updateStatus(newStatus);
-      _dbHelper.updateOrderStatus(orderId, newStatus);
+      // Don't update local DB - we only want API data
+      // _dbHelper.updateOrderStatus(orderId, newStatus);
       notifyListeners();
       debugPrint('Order status updated successfully');
     } else {
@@ -537,7 +733,8 @@ class OrderModel extends ChangeNotifier {
     for (var order in _orders) {
       if (order.status == OrderStatus.booked) {
         order.updateStatus(OrderStatus.dispatched);
-        _dbHelper.updateOrderStatus(order.id, OrderStatus.dispatched);
+        // Don't update local DB - we only want API data
+        // _dbHelper.updateOrderStatus(order.id, OrderStatus.dispatched);
       }
     }
     notifyListeners();
@@ -553,7 +750,8 @@ class OrderModel extends ChangeNotifier {
 
   void clearOrders() {
     _orders.clear();
-    _dbHelper.clearOrders();
+    // Don't clear local DB - we're not using it
+    // _dbHelper.clearOrders();
     notifyListeners();
   }
 
@@ -584,8 +782,8 @@ class OrderModel extends ChangeNotifier {
         debugPrint(
           'Found generated ID: ${order.id} - This may not work with API',
         );
-      } else if (RegExp(r'^\d+$').hasMatch(order.id)) {
-        debugPrint('Found API ID: ${order.id} - Should work with API');
+      } else if (RegExp(r'^ORD-\d+-\d+-\d+$').hasMatch(order.id)) {
+        debugPrint('Found API ID format: ${order.id} - Should work with API');
       } else {
         debugPrint('Unknown ID format: ${order.id}');
       }
@@ -595,13 +793,17 @@ class OrderModel extends ChangeNotifier {
   // Debug method
   void debugOrderCreationProcess() {
     debugPrint('=== DEBUG ORDER CREATION PROCESS ===');
-    debugPrint('Current orders in memory: ${_orders.length}');
+    debugPrint('Current orders in memory: ${_orders.length} (from API only)');
     for (int i = 0; i < _orders.length; i++) {
       final order = _orders[i];
-      debugPrint('[$i] Order ID: "${order.id}"');
+      debugPrint('[$i] Order ID: "${order.id}" (from API)');
       debugPrint('    Status: ${order.status.name}');
       debugPrint('    Products: ${order.products.length}');
       debugPrint('    Date: ${order.orderDate}');
+      if (order.status == OrderStatus.cancelled) {
+        debugPrint('    Cancellation Reason: ${order.cancellationReason ?? "N/A"}');
+        debugPrint('    Refund Status: ${order.refundStatus ?? "N/A"}');
+      }
     }
   }
 }

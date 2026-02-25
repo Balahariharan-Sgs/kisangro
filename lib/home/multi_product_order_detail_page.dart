@@ -80,7 +80,7 @@ class MultiProductOrderDetailPage extends StatelessWidget {
                     Text('Order Summary', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold, color: orangeColor)), // Always orange
                     Divider(color: dividerColor), // Apply theme color
                     _buildDetailRow('Order ID:', order.id, isDarkMode), // Pass isDarkMode
-                    _buildDetailRow('Order Date:', dateFormat.format(order.orderDate), isDarkMode), // Pass isDarkMode
+                    //_buildDetailRow('Order Date:', dateFormat.format(order.orderDate), isDarkMode), // Pass isDarkMode
                     _buildDetailRow('Total Amount:', '₹${order.totalAmount.toStringAsFixed(2)}', isDarkMode), // Pass isDarkMode
                     _buildDetailRow('Status:', order.status.name.toUpperCase(), isDarkMode), // Pass isDarkMode
                     if (order.deliveredDate != null)

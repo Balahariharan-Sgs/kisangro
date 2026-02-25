@@ -72,7 +72,7 @@ class _CancellationStep1PageState extends State<CancellationStep1Page> {
 
       final response = await http
           .post(
-            Uri.parse('https://sgserp.in/erp/api/m_api/'),
+            Uri.parse('https://erpsmart.in/total/api/m_api/'),
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},
             body: requestBody,
           )
@@ -452,7 +452,7 @@ class _CancellationStep2PageState extends State<CancellationStep2Page> {
       print('Customer ID: $cusId');
 
       final requestBody = {
-        'cid': '23262954',
+        'cid': '85788578',
         'cus_id': cusId,
         'device_id': '345343',
         'ln': '2324',
@@ -465,7 +465,7 @@ class _CancellationStep2PageState extends State<CancellationStep2Page> {
 
       final response = await http
           .post(
-            Uri.parse('https://sgserp.in/erp/api/m_api/'),
+            Uri.parse('https://erpsmart.in/total/api/m_api/'),
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},
             body: requestBody,
           )

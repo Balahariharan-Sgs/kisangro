@@ -83,7 +83,7 @@ class _KycSplashScreenState extends State<KycSplashScreen> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 30.0),
                 child: Text(
-                  'Your KYC verification is in process.\n\nYou can purchase our products once it is completed.',
+                  '\n\nYou can purchase our products on Kisangro app and get them delivered to your doorstep.',
                   textAlign: TextAlign.center,
                   style: GoogleFonts.poppins(
                     fontSize: 16,

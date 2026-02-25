@@ -625,154 +625,240 @@ class ProductService extends ChangeNotifier {
 
 
   /// NEW: Static method to fetch advertisement data from API (type 2014)
-  static Future<List<Ad>> fetchAds() async {
+ /// NEW: Static method to fetch advertisement data from API (type 1020)
+static Future<List<Ad>> fetchAds() async {
+  debugPrint(
+    'ProductService: Attempting to load Ads data from API via POST (type=1020): $_productApiUrl',
+  );
+  List<Ad> ads = [];
+  try {
+    final prefs = await SharedPreferences.getInstance();
+
+    double? latitude = prefs.getDouble('latitude');
+    double? longitude = prefs.getDouble('longitude');
+    String? deviceId = prefs.getString('device_id');
+
+    final requestBody = {
+      'cid': _cid,
+      'type': '1020',
+      'ln': latitude?.toString() ?? '1',
+      'lt': longitude?.toString() ?? '1',
+      'device_id': deviceId ?? '1',
+    };
+
+    final response = await http
+        .post(
+          Uri.parse(_productApiUrl),
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Accept': 'application/json',
+          },
+          body: requestBody,
+        )
+        .timeout(const Duration(seconds: 30));
+
     debugPrint(
-      'ProductService: Attempting to load Ads data from API via POST (type=1020): $_productApiUrl',
+      'ProductService: Response Status Code (type=1020): ${response.statusCode}',
     );
-    List<Ad> ads = [];
-    try {
-      final prefs = await SharedPreferences.getInstance();
+    debugPrint(
+      'ProductService: Raw Response Body (type=1020): ${response.body}',
+    );
 
-      double? latitude = prefs.getDouble('latitude');
-      double? longitude = prefs.getDouble('longitude');
-      String? deviceId = prefs.getString('device_id');
-
-      final requestBody = {
-        'cid': _cid,
-        'type': '1020',
-        'ln': latitude?.toString() ?? '',
-        'lt': longitude?.toString() ?? '',
-        'device_id': deviceId ?? '', // Specific device_id for ads API
-      };
-
-      final response = await http
-          .post(
-            Uri.parse(_productApiUrl),
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-              'Accept': 'application/json',
-            },
-            body: requestBody,
-          )
-          .timeout(const Duration(seconds: 30));
-
-      debugPrint(
-        'ProductService: Response Status Code (type=1020): ${response.statusCode}',
-      );
-      debugPrint(
-        'ProductService: Raw Response Body (type=1020): ${response.body}',
-      );
-
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> responseData = json.decode(response.body);
-        if (responseData['error'] == false && responseData['deals'] is List) {
-          final List<dynamic> rawAdsData = responseData['deals'];
-          for (var item in rawAdsData) {
-            ads.add(Ad.fromJson(item as Map<String, dynamic>));
-          }
-          debugPrint(
-            'ProductService: Successfully parsed ${ads.length} ads from API (type=1020).',
-          );
-        } else {
-          debugPrint(
-            'ProductService: API response for Ads (type=1020) invalid or error: ${responseData['message']}. Response: $responseData. Returning empty list.',
-          );
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> responseData = json.decode(response.body);
+      if (responseData['error'] == false && responseData['deals'] is List) {
+        final List<dynamic> rawAdsData = responseData['deals'];
+        for (var item in rawAdsData) {
+          // Create Ad object matching your actual Ad model
+          ads.add(Ad(
+            adId: (item['ad_id'] as num).toInt(),
+            adName: item['ad_name'] as String,
+            banner: item['ad'] as String,
+          ));
         }
+        debugPrint(
+          'ProductService: Successfully parsed ${ads.length} ads from API (type=1020).',
+        );
       } else {
         debugPrint(
-          'ProductService: Failed to load Ads (type=1020). Status code: ${response.statusCode}. Response: ${response.body}. Returning empty list.',
+          'ProductService: API response for Ads (type=1020) invalid or error: ${responseData['message']}. Response: $responseData. Returning empty list.',
         );
       }
-    } on TimeoutException catch (_) {
+    } else {
       debugPrint(
-        'ProductService: Request for Ads (type=1020) timed out. Returning empty list.',
-      );
-    } on http.ClientException catch (e) {
-      debugPrint(
-        'ProductService: Network error for Ads (type=1020): $e. Returning empty list.',
-      );
-    } catch (e) {
-      debugPrint(
-        'ProductService: Unexpected error fetching Ads (type=1020): $e. Returning empty list.',
+        'ProductService: Failed to load Ads (type=1020). Status code: ${response.statusCode}. Response: ${response.body}. Returning empty list.',
       );
     }
-    return ads;
+  } on TimeoutException catch (_) {
+    debugPrint(
+      'ProductService: Request for Ads (type=1020) timed out. Returning empty list.',
+    );
+  } on http.ClientException catch (e) {
+    debugPrint(
+      'ProductService: Network error for Ads (type=1020): $e. Returning empty list.',
+    );
+  } catch (e) {
+    debugPrint(
+      'ProductService: Unexpected error fetching Ads (type=1020): $e. Returning empty list.',
+    );
   }
-
+  return ads;
+}
+  
+  
+  
   /// NEW: Static method to fetch Deals of the Day data from API (type 2013)
-  static Future<List<Deal>> fetchDealsOfTheDay() async {
+/// NEW: Static method to fetch Deals of the Day data from API (type 1021)
+/// NEW: Static method to fetch Deals of the Day data from API (type 1021)
+static Future<List<Deal>> fetchDealsOfTheDay() async {
+  debugPrint(
+    'ProductService: Attempting to load Deals of the Day data from API via POST (type=1021): $_productApiUrl',
+  );
+  List<Deal> deals = [];
+  try {
+    final prefs = await SharedPreferences.getInstance();
+
+    double? latitude = prefs.getDouble('latitude');
+    double? longitude = prefs.getDouble('longitude');
+    String? deviceId = prefs.getString('device_id');
+
+    final requestBody = {
+      'cid': _cid,
+      'type': '1021',
+      'lt': latitude?.toString() ?? '1',
+      'ln': longitude?.toString() ?? '1',
+      'device_id': deviceId ?? '1',
+    };
+
+    final response = await http
+        .post(
+          Uri.parse(_productApiUrl),
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Accept': 'application/json',
+          },
+          body: requestBody,
+        )
+        .timeout(const Duration(seconds: 30));
+
     debugPrint(
-      'ProductService: Attempting to load Deals of the Day data from API via POST (type=1021): $_productApiUrl',
+      'ProductService: Response Status Code (type=1021): ${response.statusCode}',
     );
-    List<Deal> deals = [];
-    try {
-      final prefs = await SharedPreferences.getInstance();
+    debugPrint(
+      'ProductService: Raw Response Body (type=1021): ${response.body}',
+    );
 
-      double? latitude = prefs.getDouble('latitude');
-      double? longitude = prefs.getDouble('longitude');
-      String? deviceId = prefs.getString('device_id');
-
-      final requestBody = {
-        'cid': _cid,
-        'type': '1021',
-        'lt': latitude?.toString() ?? '1',
-        'ln': longitude?.toString() ?? '1',
-        'device_id': deviceId ?? '1',
-      };
-
-      final response = await http
-          .post(
-            Uri.parse(_productApiUrl),
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-              'Accept': 'application/json',
-            },
-            body: requestBody,
-          )
-          .timeout(const Duration(seconds: 30));
-
-      debugPrint(
-        'ProductService: Response Status Code (type=1021): ${response.statusCode}',
-      );
-      debugPrint(
-        'ProductService: Raw Response Body (type=1021): ${response.body}',
-      );
-
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> responseData = json.decode(response.body);
-        if (responseData['error'] == false && responseData['deals'] is List) {
-          final List<dynamic> rawDealsData = responseData['deals'];
-          for (var item in rawDealsData) {
-            deals.add(Deal.fromJson(item as Map<String, dynamic>));
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> responseData = json.decode(response.body);
+      if (responseData['error'] == false && responseData['deals'] is List) {
+        final List<dynamic> rawDealsData = responseData['deals'];
+        
+        for (var dealItem in rawDealsData) {
+          // Extract the deal-level information
+          final int dealId = dealItem['deal_id'] as int? ?? 0;
+          final String dealName = dealItem['deal_name'] as String? ?? '';
+          
+          // Fix banner URL - add .jpg extension if missing
+          String bannerUrl = dealItem['banner'] as String? ?? '';
+          if (bannerUrl.isNotEmpty && !bannerUrl.contains('.')) {
+            bannerUrl = bannerUrl + '.jpg'; // Add default extension
           }
-          debugPrint(
-            'ProductService: Successfully parsed ${deals.length} deals from API (type=1021).',
-          );
-        } else {
-          debugPrint(
-            'ProductService: API response for Deals (type=1021) invalid or error: ${responseData['message']}. Response: $responseData. Returning empty list.',
-          );
+          
+          final String startDate = dealItem['start_date'] as String? ?? '';
+          final String endDate = dealItem['end_date'] as String? ?? '';
+          final String startTime = dealItem['start_time'] as String? ?? '';
+          final String endTime = dealItem['end_time'] as String? ?? '';
+          
+          // Check if there are products in this deal
+          if (dealItem.containsKey('products') && dealItem['products'] is List) {
+            final List<dynamic> productsList = dealItem['products'];
+            
+            // Create a separate Deal object for each product in the products array
+            for (var productItem in productsList) {
+              // Extract product information
+              final int productId = (productItem['product_id'] as num?)?.toInt() ?? 0;
+              final String productName = productItem['product_name'] as String? ?? '';
+              
+              // Fix product image URL
+              String productImgUrl = productItem['product_img'] as String? ?? '';
+              if (productImgUrl.isEmpty) {
+                // If product image is empty, use a placeholder or the banner as fallback
+                productImgUrl = 'assets/placeholder.png';
+              } else if (!productImgUrl.startsWith('http')) {
+                // If relative URL, construct absolute URL
+                if (productImgUrl.startsWith('../')) {
+                  productImgUrl = productImgUrl.replaceFirst('../', 'https://erpsmart.in/total/');
+                } else {
+                  productImgUrl = 'https://erpsmart.in/total/' + productImgUrl;
+                }
+              }
+              
+              final String dealPrice = productItem['deal_price'] as String? ?? '0';
+              final String originalPrice = productItem['original_price'] as String? ?? '0';
+              final String discountPercent = productItem['discount_percent'] as String? ?? '0%';
+              
+              // Parse prices, removing any '%' symbols if present
+              double parsePrice(String priceStr) {
+                if (priceStr.isEmpty) return 0.0;
+                // Remove any '%' symbols and trim
+                String cleaned = priceStr.replaceAll('%', '').trim();
+                return double.tryParse(cleaned) ?? 0.0;
+              }
+              
+              // Create a Deal object for this product
+              // Using the product's data for product-specific fields
+              // and deal-level data for deal-specific fields
+              final Map<String, dynamic> flatDealJson = {
+                'deal_id': dealId,
+                'deal_name': dealName,
+                'start_date': startDate,
+                'end_date': endDate,
+                'banner': bannerUrl, // Now with proper extension
+                'pro_id': productId, // Use product_id as pro_id
+                'product_name': productName,
+                'size': 'Unit', // Default size since not in response
+                'mrp': parsePrice(originalPrice),
+                'selling_price': parsePrice(dealPrice),
+                'product_img': productImgUrl,
+              };
+              
+              try {
+                final deal = Deal.fromJson(flatDealJson);
+                deals.add(deal);
+              } catch (e) {
+                debugPrint('ProductService: Error creating Deal object: $e');
+              }
+            }
+          }
         }
+        debugPrint(
+          'ProductService: Successfully parsed ${deals.length} deals from API (type=1021).',
+        );
       } else {
         debugPrint(
-          'ProductService: Failed to load Deals (type=1021). Status code: ${response.statusCode}. Response: ${response.body}. Returning empty list.',
+          'ProductService: API response for Deals (type=1021) invalid or error: ${responseData['message']}. Response: $responseData. Returning empty list.',
         );
       }
-    } on TimeoutException catch (_) {
+    } else {
       debugPrint(
-        'ProductService: Request for Deals (type=1021) timed out. Returning empty list.',
-      );
-    } on http.ClientException catch (e) {
-      debugPrint(
-        'ProductService: Network error for Deals (type=1021): $e. Returning empty list.',
-      );
-    } catch (e) {
-      debugPrint(
-        'ProductService: Unexpected error fetching Deals (type=1021): $e. Returning empty list.',
+        'ProductService: Failed to load Deals (type=1021). Status code: ${response.statusCode}. Response: ${response.body}. Returning empty list.',
       );
     }
-    return deals;
+  } on TimeoutException catch (_) {
+    debugPrint(
+      'ProductService: Request for Deals (type=1021) timed out. Returning empty list.',
+    );
+  } on http.ClientException catch (e) {
+    debugPrint(
+      'ProductService: Network error for Deals (type=1021): $e. Returning empty list.',
+    );
+  } catch (e) {
+    debugPrint(
+      'ProductService: Unexpected error fetching Deals (type=1021): $e. Returning empty list.',
+    );
   }
+  return deals;
+}
 
   // Method to get a random valid image URL
   static String getRandomValidImageUrl() {
@@ -1076,6 +1162,8 @@ class ProductService extends ChangeNotifier {
         ],
       },
     ];
+
+    
 
     final seenProductMainIds = <String>{};
     final List<Product> productsToProcess = [];

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:kisangro/login/login.dart';
+import 'package:kisangro/login/splashscreen.dart';
 import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences
 import 'package:provider/provider.dart'; // Import Provider
 import '../home/theme_mode_provider.dart'; // Import ThemeModeProvider
@@ -30,19 +30,35 @@ class HomePage extends StatelessWidget {
       barrierDismissible: false,
       builder: (context) => LogoutConfirmationDialog(
         onCancel: () => Navigator.of(context).pop(),
-        onLogout: () async { // Made onLogout async
+        onLogout: () async {
           Navigator.of(context).pop();
-          // Add your logout logic here
+          
+          // Clear all user data from SharedPreferences
           final prefs = await SharedPreferences.getInstance();
-          await prefs.setBool('isLoggedIn', false); // Set isLoggedIn to false on logout
+          
+          // Clear all login-related data
+          await prefs.remove('isLoggedIn');
+          await prefs.remove('cus_id');
+          await prefs.remove('hasUploadedLicenses');
+          await prefs.remove('fcm_token');
+          await prefs.remove('fcm_token_synced');
+          // Optional: Clear location data if you want fresh location on next login
+          // await prefs.remove('latitude');
+          // await prefs.remove('longitude');
+          // await prefs.remove('device_id');
+          
+          // Clear any other user-specific data
+          // You can add more keys to remove as needed
+          
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Logged out')),
+            const SnackBar(content: Text('Logged out successfully')),
           );
-          // Navigate to LoginApp after logout
-          Navigator.pushAndRemoveUntil( // Use pushAndRemoveUntil to clear navigation stack
+          
+          // Navigate to splashscreen after logout
+          Navigator.pushAndRemoveUntil(
             context,
-            MaterialPageRoute(builder: (context) => const LoginApp()),
-                (Route<dynamic> route) => false, // This predicate removes all routes until false
+            MaterialPageRoute(builder: (context) => const splashscreen()),
+            (Route<dynamic> route) => false,
           );
         },
       ),

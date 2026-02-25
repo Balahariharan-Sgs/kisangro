@@ -211,45 +211,47 @@ class _CustomDrawerState extends State<CustomDrawer> {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const MembershipDetailsScreen(),
-                      ),
-                    );
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xffEB7720),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(5),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        _isMembershipActive ? "You Are A Member" : "Not A Member Yet",
-                        style: GoogleFonts.poppins(
-                          color: buttonTextColor,
-                          fontSize: 12,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Icon(
-                        Icons.arrow_forward_ios_outlined,
-                        color: buttonTextColor,
-                        size: 12,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+             // const SizedBox(height: 8),
+              // SizedBox(
+              //   width: double.infinity,
+              //   child: ElevatedButton(
+              //     onPressed: () {
+              //       Navigator.push(
+              //         context,
+              //         MaterialPageRoute(
+              //           builder: (context) => const MembershipDetailsScreen(),
+              //         ),
+              //       );
+              //     },
+              //     style: ElevatedButton.styleFrom(
+              //       backgroundColor: const Color(0xffEB7720),
+              //       shape: RoundedRectangleBorder(
+              //         borderRadius: BorderRadius.circular(5),
+              //       ),
+              //       padding: const EdgeInsets.symmetric(vertical: 8),
+              //     ),
+              //     child: Row(
+              //       mainAxisAlignment: MainAxisAlignment.center,
+              //       children: [
+              //         Text(
+              //           _isMembershipActive ? "You Are A Member" : "Not A Member Yet",
+              //           style: GoogleFonts.poppins(
+              //             color: buttonTextColor,
+              //             fontSize: 12,
+              //           ),
+              //         ),
+              //         const SizedBox(width: 6),
+              //         Icon(
+              //           Icons.arrow_forward_ios_outlined,
+              //           color: buttonTextColor,
+              //           size: 12,
+              //         ),
+              //       ],
+              //     ),
+              //   ),
+              // ),
+          
+          
             ],
           ),
         );
@@ -315,24 +317,24 @@ class _CustomDrawerState extends State<CustomDrawer> {
           case 'Logout':
             widget.showLogoutDialog(context);
             break;
-          case 'About Us':
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('About Us page coming soon!',
-                    style: GoogleFonts.poppins(color: isDarkMode ? Colors.white : Colors.black)),
-                backgroundColor: isDarkMode ? Colors.grey[800] : Colors.white,
-              ),
-            );
-            break;
-          case 'Share Kisangro':
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Share functionality coming soon!',
-                    style: GoogleFonts.poppins(color: isDarkMode ? Colors.white : Colors.black)),
-                backgroundColor: isDarkMode ? Colors.grey[800] : Colors.white,
-              ),
-            );
-            break;
+          // case 'About Us':
+          //   ScaffoldMessenger.of(context).showSnackBar(
+          //     SnackBar(
+          //       content: Text('About Us page coming soon!',
+          //           style: GoogleFonts.poppins(color: isDarkMode ? Colors.white : Colors.black)),
+          //       backgroundColor: isDarkMode ? Colors.grey[800] : Colors.white,
+          //     ),
+          //   );
+          //   break;
+          // case 'Share Kisangro':
+          //   ScaffoldMessenger.of(context).showSnackBar(
+          //     SnackBar(
+          //       content: Text('Share functionality coming soon!',
+          //           style: GoogleFonts.poppins(color: isDarkMode ? Colors.white : Colors.black)),
+          //       backgroundColor: isDarkMode ? Colors.grey[800] : Colors.white,
+          //     ),
+          //   );
+          //   break;
         }
       },
     );
@@ -361,10 +363,10 @@ class _CustomDrawerState extends State<CustomDrawer> {
                   _buildMenuItem(Icons.favorite_border, "Wishlist"),
                   _buildMenuItem(Icons.history, "Transaction History"),
                   _buildMenuItem(Icons.headset_mic, "Ask Us!"),
-                  _buildMenuItem(Icons.info_outline, "About Us"),
-                  _buildMenuItem(Icons.star_border, "Rate Us"),
-                  _buildMenuItem(Icons.share_outlined, "Share Kisangro"),
-                  _buildMenuItem(Icons.settings_outlined, "Settings"),
+                  // _buildMenuItem(Icons.info_outline, "About Us"),
+                  // _buildMenuItem(Icons.star_border, "Rate Us"),
+                  // _buildMenuItem(Icons.share_outlined, "Share Kisangro"),
+                 // _buildMenuItem(Icons.settings_outlined, "Settings"),
                   _buildMenuItem(Icons.logout, "Logout"),
                 ],
               ),
@@ -465,7 +467,7 @@ class _AnimatedMenuItemState extends State<AnimatedMenuItem> with SingleTickerPr
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
                   leading: Icon(widget.icon, color: iconColor, size: 20),
                   title: Text(
                     widget.label,

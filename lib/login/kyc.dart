@@ -58,34 +58,40 @@ class _kycState extends State<kyc> {
   @override
   void initState() {
     super.initState();
+
     debugPrint('KYC Screen: initState called');
-    _initializeKycScreen();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _initializeKycScreen();
+    });
+
     _whatsAppNumberController.addListener(_autoFillBusinessContactNumber);
   }
 
-  Future<void> _initializeKycScreen() async {
-    try {
-      _kycBusinessDataProvider = Provider.of<KycBusinessDataProvider>(
-        context,
-        listen: false,
-      );
-      _kycImageProvider = Provider.of<KycImageProvider>(context, listen: false);
-      debugPrint('KYC Screen: Providers initialized successfully');
-    } catch (e) {
-      debugPrint('KYC Screen: Error initializing providers: $e');
-    }
+ Future<void> _initializeKycScreen() async {
+  try {
+    _kycBusinessDataProvider =
+        Provider.of<KycBusinessDataProvider>(context, listen: false);
+    _kycImageProvider =
+        Provider.of<KycImageProvider>(context, listen: false);
 
+    debugPrint('KYC Screen: Providers initialized successfully');
+
+    // ✅ LOAD cus_id FIRST
     await _loadCusId();
-    if (_cusId != null) {
+
+    debugPrint('KYC Screen: cus_id after loading: $_cusId');
+
+    // ✅ THEN fetch from API
+    if (_cusId != null && _cusId! > 0) {
       await _fetchKycData(_cusId!);
     } else {
-      _loadExistingKycData();
+      debugPrint('KYC Screen: cus_id is null or 0');
     }
-    setState(() {
-      _isLoadingCusId = false;
-    });
-  }
 
+  } catch (e) {
+    debugPrint('KYC Screen: Error initializing screen: $e');
+  }
+}
   @override
   void dispose() {
     debugPrint('KYC Screen: dispose called');
@@ -121,53 +127,24 @@ class _kycState extends State<kyc> {
 
       debugPrint('KYC Screen: Original image path from server: $imageUrl');
 
+      // Fix malformed URL if needed
+      String fixedUrl = _fixImageUrl(imageUrl);
+      debugPrint('KYC Screen: Fixed image URL: $fixedUrl');
+
       // Validate image format
-      if (!imageUrl.toLowerCase().endsWith('.jpg') &&
-          !imageUrl.toLowerCase().endsWith('.jpeg') &&
-          !imageUrl.toLowerCase().endsWith('.png')) {
-        debugPrint('KYC Screen: Invalid image format detected: $imageUrl');
+      if (!fixedUrl.toLowerCase().endsWith('.jpg') &&
+          !fixedUrl.toLowerCase().endsWith('.jpeg') &&
+          !fixedUrl.toLowerCase().endsWith('.png')) {
+        debugPrint('KYC Screen: Invalid image format detected: $fixedUrl');
         setState(() {
           _imageLoadFailed = true;
         });
         return null;
       }
 
-      // Check if the URL already starts with http
-      if (imageUrl.startsWith('http')) {
-        // URL is already complete, use it directly
-        debugPrint('KYC Screen: Using complete URL: $imageUrl');
-        final response = await http
-            .get(
-              Uri.parse(imageUrl),
-              headers: {
-                'Accept': 'image/*',
-                'User-Agent': 'KisangroApp/1.0',
-                'Cache-Control': 'no-cache',
-              },
-            )
-            .timeout(Duration(seconds: 12));
-
-        if (response.statusCode == 200 &&
-            _isValidImageData(response.bodyBytes)) {
-          return response.bodyBytes;
-        }
-      }
-
-      // If we get here, we need to construct the URL properly
-      // The server returns paths like "erp/uploads/kyc/kyc_23262954_287_1758264669.jpg"
-      // The correct URL should be "https://sgserp.in/erp/uploads/kyc/kyc_23262954_287_1758264669.jpg"
-
-      String baseUrl = 'https://sgserp.in';
-      String completeUrl = '$baseUrl/$imageUrl';
-
-      // Remove any double slashes that might occur
-      completeUrl = completeUrl.replaceAll('//', '/').replaceFirst(':/', '://');
-
-      debugPrint('KYC Screen: Constructed URL: $completeUrl');
-
       final response = await http
           .get(
-            Uri.parse(completeUrl),
+            Uri.parse(fixedUrl),
             headers: {
               'Accept': 'image/*',
               'User-Agent': 'KisangroApp/1.0',
@@ -177,7 +154,7 @@ class _kycState extends State<kyc> {
           .timeout(Duration(seconds: 12));
 
       debugPrint(
-        'KYC Screen: Response status for $completeUrl: ${response.statusCode}',
+        'KYC Screen: Response status for $fixedUrl: ${response.statusCode}',
       );
       debugPrint(
         'KYC Screen: Content-Type: ${response.headers['content-type']}',
@@ -189,7 +166,7 @@ class _kycState extends State<kyc> {
       if (response.statusCode == 200) {
         if (_isValidImageData(response.bodyBytes)) {
           debugPrint(
-            'KYC Screen: ✅ Image loaded successfully from: $completeUrl',
+            'KYC Screen: ✅ Image loaded successfully from: $fixedUrl',
           );
           debugPrint(
             'KYC Screen: Image size: ${response.bodyBytes.lengthInBytes} bytes',
@@ -197,12 +174,12 @@ class _kycState extends State<kyc> {
           return response.bodyBytes;
         } else {
           debugPrint(
-            'KYC Screen: ❌ Response is not a valid image: $completeUrl',
+            'KYC Screen: ❌ Response is not a valid image: $fixedUrl',
           );
         }
       } else {
         debugPrint(
-          'KYC Screen: ❌ HTTP ${response.statusCode} for: $completeUrl',
+          'KYC Screen: ❌ HTTP ${response.statusCode} for: $fixedUrl',
         );
       }
 
@@ -223,6 +200,50 @@ class _kycState extends State<kyc> {
       });
     }
   }
+
+  // Helper method to fix malformed image URLs
+// Helper method to fix malformed image URLs
+String _fixImageUrl(String rawUrl) {
+  if (rawUrl.isEmpty) return rawUrl;
+  
+  debugPrint('KYC Screen: Fixing URL: $rawUrl');
+  
+  // Special case for your exact URL pattern
+  // "https://erpsmart.in/total/uploads/kyc/https://erpsmart.in/total/uploads/kyc/filename.jpg"
+  if (rawUrl.contains('/uploads/kyc/') && rawUrl.contains('https://erpsmart.in/total/uploads/kyc/https://')) {
+    // Extract the filename from the end
+    List<String> parts = rawUrl.split('/');
+    if (parts.isNotEmpty) {
+      String filename = parts.last;
+      // Construct proper URL
+      String fixed = 'https://erpsmart.in/total/uploads/kyc/$filename';
+      debugPrint('KYC Screen: Fixed malformed URL: $fixed');
+      return fixed;
+    }
+  }
+  
+  // Case 1: URL has duplicate https://
+  if (rawUrl.contains('https://') && rawUrl.indexOf('https://') != rawUrl.lastIndexOf('https://')) {
+    // Get the last occurrence of https://
+    int lastIndex = rawUrl.lastIndexOf('https://');
+    String fixed = rawUrl.substring(lastIndex);
+    debugPrint('KYC Screen: Fixed duplicate https: $fixed');
+    return fixed;
+  }
+  
+  // Case 2: URL starts with http but has extra path
+  if (rawUrl.startsWith('http') && rawUrl.split('/uploads/kyc/').length > 2) {
+    List<String> parts = rawUrl.split('/uploads/kyc/');
+    if (parts.length >= 2) {
+      String filename = parts.last;
+      String fixed = 'https://erpsmart.in/total/uploads/kyc/$filename';
+      debugPrint('KYC Screen: Fixed multiple path segments: $fixed');
+      return fixed;
+    }
+  }
+  
+  return rawUrl;
+}
 
   // Helper method to validate if bytes represent a valid image
   bool _isValidImageData(Uint8List bytes) {
@@ -285,9 +306,9 @@ class _kycState extends State<kyc> {
         body: {
           'cid': _cid,
           'type': '1005',
-          'lt': latitude?.toString() ?? '',
-          'ln': longitude?.toString() ?? '',
-          'device_id': deviceId ?? '',
+          'lt': latitude?.toString() ?? '1',
+          'ln': longitude?.toString() ?? '1',
+          'device_id': deviceId ?? '1',
           'cus_id': cusId.toString(),
         },
       );
@@ -300,21 +321,22 @@ class _kycState extends State<kyc> {
 
         // Extract all fields with null checks
         final kycData = {
-          'name': responseData['name'] ?? '',
-          'email': responseData['email'] ?? '',
-          'mobile': responseData['w_num'] ?? '',
-          'business_name': responseData['com_name'] ?? '',
-          'gstin': responseData['gstin'] ?? '',
-          'aadhar': responseData['aadhar'] ?? '',
-          'pan': responseData['pan'] ?? '',
-          'nature_of_business':
-              'Distributor', // Default as not provided in new API
-          'business_contact_number': responseData['phone_1'] ?? '',
-          'isGstinVerified': responseData['v_status'] == 'verified',
-          'business_address': responseData['address'] ?? '',
-          'photo': responseData['photo'] ?? '', // Get photo URL
+          'name': responseData['name']?.toString() ?? '',
+          'email': responseData['email']?.toString() ?? '',
+          'mobile': responseData['w_num']?.toString() ?? '',
+          'business_name': responseData['com_name']?.toString() ?? '',
+          'gstin': responseData['gst']?.toString() ?? '',
+          'aadhar': responseData['aadhar']?.toString() ?? '',
+          'pan': responseData['pan']?.toString() ?? '',
+          'nature_of_business': 'Distributor',
+          'business_contact_number': responseData['phone']?.toString() ?? '',
+          'business_address': responseData['address']?.toString() ?? '',
+          'photo': responseData['photo']?.toString() ?? '',
         };
-
+        
+        // Check if GSTIN is already verified (has value and not empty)
+        bool gstVerified = kycData['gstin'] != null && kycData['gstin']!.isNotEmpty;
+        
         // Load image from URL if available
         Uint8List? imageBytes;
         if (kycData['photo']!.isNotEmpty) {
@@ -340,7 +362,7 @@ class _kycState extends State<kyc> {
             _natureOfBusinessSelected = kycData['nature_of_business']!;
             _businessContactNumberController.text =
                 kycData['business_contact_number']!;
-            _isGstinVerified = kycData['isGstinVerified']!;
+            _isGstinVerified = gstVerified;
             _hasExistingKycData = true;
 
             // Set image bytes if loaded successfully
@@ -367,7 +389,7 @@ class _kycState extends State<kyc> {
             whatsAppNumber: kycData['mobile'],
             businessName: kycData['business_name'],
             gstin: kycData['gstin'],
-            isGstinVerified: kycData['isGstinVerified'],
+            isGstinVerified: gstVerified,
             aadhaarNumber: kycData['aadhar'],
             panNumber: kycData['pan'],
             natureOfBusiness: kycData['nature_of_business'],
@@ -414,9 +436,9 @@ class _kycState extends State<kyc> {
           'cid': _cid,
           'type': '1003',
           'cus_id': cusId.toString(),
-          'lt': latitude?.toString() ?? '',
-          'ln': longitude?.toString() ?? '',
-          'device_id': deviceId ?? '',
+          'lt': latitude?.toString() ?? '1',
+          'ln': longitude?.toString() ?? '1',
+          'device_id': deviceId ?? '1',
         },
       );
 
@@ -435,12 +457,11 @@ class _kycState extends State<kyc> {
           'email': responseData['email'] ?? '',
           'mobile': responseData['mobile'] ?? '',
           'business_name': responseData['business_name'] ?? '',
-          'gstin': responseData['gstin'] ?? '',
+          'gstin': responseData['gst'] ?? '',
           'aadhar': responseData['aadhar'] ?? '',
           'pan': responseData['pan'] ?? '',
           'nature_of_business': responseData['nature_of_business'] ?? '',
-          'business_contact_number':
-              responseData['business_contact_number'] ?? '',
+          'business_contact_number': responseData['phone']?.toString() ?? '',
           'isGstinVerified': responseData['isGstinVerified'] ?? false,
           'photo':
               responseData['photo'] ?? '', // Get photo URL from old API too
@@ -722,6 +743,9 @@ class _kycState extends State<kyc> {
         isDarkMode ? Colors.white : const Color(0xfff8bc8c);
     final Color orangeColor = const Color(0xffEB7720);
 
+    // Hide verify button if GST is already verified
+    bool shouldShowVerify = showVerify && label == "GSTIN" && !_isGstinVerified;
+
     return SizedBox(
       height: isTablet ? 80 : 70,
       child: Padding(
@@ -773,7 +797,7 @@ class _kycState extends State<kyc> {
             ),
             isDense: true,
             suffixIcon:
-                showVerify
+                shouldShowVerify
                     ? Padding(
                       padding: EdgeInsets.zero,
                       child: ElevatedButton(
@@ -1371,7 +1395,7 @@ class _kycState extends State<kyc> {
             'kyc_id': kycId,
             'name': _fullNameController.text,
             'com_name': _businessNameController.text,
-            'gstin100': _gstinController.text,
+            'gstin': _gstinController.text,
             'pan': _panNumberController.text,
             'aadhar': _aadhaarNumberController.text,
             'nature_of_business': _natureOfBusinessSelected ?? 'Distributor',
@@ -2041,31 +2065,31 @@ class _kycState extends State<kyc> {
                                     ),
                           ),
                         ),
-                        SizedBox(height: isTablet ? 15 : 10),
-                        // Skip KYC Button
-                        SizedBox(
-                          width: isTablet ? 400 : double.infinity,
-                          height: isTablet ? 50 : 40,
-                          child: TextButton(
-                            onPressed:
-                                _isSubmitting ? null : _skipKycAndProceed,
-                            style: TextButton.styleFrom(
-                              foregroundColor: orangeColor,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                side: BorderSide(color: orangeColor, width: 2),
-                              ),
-                            ),
-                            child: Text(
-                              'Proceed',
-                              style: GoogleFonts.poppins(
-                                fontSize: isTablet ? 16 : 14,
-                                color: orangeColor,
-                              ),
-                            ),
-                          ),
-                        ),
-                        SizedBox(height: isTablet ? 30 : 20),
+                        // SizedBox(height: isTablet ? 15 : 10),
+                        // // Skip KYC Button
+                        // SizedBox(
+                        //   width: isTablet ? 400 : double.infinity,
+                        //   height: isTablet ? 50 : 40,
+                        //   child: TextButton(
+                        //     onPressed:
+                        //         _isSubmitting ? null : _skipKycAndProceed,
+                        //     style: TextButton.styleFrom(
+                        //       foregroundColor: orangeColor,
+                        //       shape: RoundedRectangleBorder(
+                        //         borderRadius: BorderRadius.circular(10),
+                        //         side: BorderSide(color: orangeColor, width: 2),
+                        //       ),
+                        //     ),
+                        //     child: Text(
+                        //       'Proceed',
+                        //       style: GoogleFonts.poppins(
+                        //         fontSize: isTablet ? 16 : 14,
+                        //         color: orangeColor,
+                        //       ),
+                        //     ),
+                        //   ),
+                        // ),
+                        // SizedBox(height: isTablet ? 30 : 20),
                       ],
                     ),
                   ),

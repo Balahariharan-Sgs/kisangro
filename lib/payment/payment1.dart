@@ -324,7 +324,7 @@ class _deliveryState extends State<delivery> {
       subTotal = cartModel.totalAmount;
     }
 
-    const double shippingFee = 01.0;
+    const double shippingFee = 0.0;
     const double discount = 0.0;
     final double grandTotal = subTotal + shippingFee - discount;
 
@@ -709,7 +709,7 @@ class _deliveryState extends State<delivery> {
                   }
                   
                   // Add shipping fee
-                  const double shippingFee = 40.0;
+                  const double shippingFee = 0.0;
                   final double grandTotal = totalAmount + shippingFee;
                   
                   // Navigate directly to RazorpayPage

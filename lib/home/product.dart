@@ -18,9 +18,12 @@ import 'package:kisangro/models/order_model.dart';
 import 'package:kisangro/home/cart.dart';
 import 'package:kisangro/services/product_service.dart';
 import '../models/address_model.dart';
-import 'package:collection/collection.dart'; // For firstWhereOrNull
+import 'package:collection/collection.dart';
 import 'package:kisangro/home/product_size_selection_bottom_sheet.dart';
 import 'package:kisangro/common/common_app_bar.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 
 class ProductDetailPage extends StatefulWidget {
   final Product? product;
@@ -40,13 +43,13 @@ class ProductDetailPage extends StatefulWidget {
 
 class _ProductDetailPageState extends State<ProductDetailPage> {
   int activeIndex = 0;
-  // Make _currentSelectedUnit nullable initially, and initialize in initState
-  ProductSize? _currentSelectedUnit; // Changed type to ProductSize?
-  late final List<String> imageAssets; // Will hold the main product image (repeated for carousel)
+  ProductSize? _currentSelectedUnit;
+  late final List<String> imageAssets;
   VideoPlayerController? _videoController;
+  YoutubePlayerController? _youtubeController;
   Future<void>? _initializeVideoPlayerFuture;
   bool _videoLoadError = false;
-  int _quantity = 1; // Added quantity counter
+  int _quantity = 1;
 
   List<Product> similarProducts = [];
   List<Product> topSellingProducts = [];
@@ -54,49 +57,96 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   final Color primaryColor = const Color(0xFFF37021);
   final Color themeOrange = const Color(0xffEB7720);
   final Color redColor = const Color(0xFFDC2F2F);
-  // Removed backgroundColor as it will be determined by theme
+
+  // API response data
+  Map<String, dynamic>? _apiProductData;
+  bool _isLoading = true;
+  String? _errorMessage;
 
   // Helper method to determine if a URL is valid for network image or if it's a local asset
   String _getEffectiveImageUrl(String rawImageUrl) {
     if (rawImageUrl.isEmpty || rawImageUrl == 'https://sgserp.in/erp/api/' || (Uri.tryParse(rawImageUrl)?.isAbsolute != true && !rawImageUrl.startsWith('assets/'))) {
-      return ProductService.getRandomValidImageUrl(); // Use a random valid API image or local placeholder
+      return ProductService.getRandomValidImageUrl();
     }
     return rawImageUrl;
   }
 
   bool get _isOrderedProduct => widget.orderedProduct != null;
-  String get _displayTitle => _isOrderedProduct ? widget.orderedProduct!.title : widget.product!.title;
-  String get _displaySubtitle => _isOrderedProduct ? widget.orderedProduct!.description : widget.product!.subtitle;
-  String get _displayImageUrl => _isOrderedProduct ? widget.orderedProduct!.imageUrl : widget.product!.imageUrl;
-  String get _displayCategory => _isOrderedProduct ? widget.orderedProduct!.category : widget.product!.category;
+String get _displayTitle => _isOrderedProduct 
+    ? widget.orderedProduct!.title 
+    : (_apiProductData != null && _apiProductData!['product_name'] != null && _apiProductData!['product_name'].toString().isNotEmpty
+        ? _apiProductData!['product_name'] 
+        : widget.product!.title);
 
+String get _displaySubtitle => _isOrderedProduct 
+    ? widget.orderedProduct!.description 
+    : (_apiProductData != null && _apiProductData!['product_description'] != null && _apiProductData!['product_description'].toString().isNotEmpty
+        ? _apiProductData!['product_description'] 
+        : widget.product!.subtitle);
+
+String get _displayImageUrl => _isOrderedProduct 
+    ? widget.orderedProduct!.imageUrl 
+    : (_apiProductData != null && _apiProductData!['image'] != null && _apiProductData!['image'].toString().isNotEmpty 
+        ? _apiProductData!['image'] 
+        : widget.product!.imageUrl);
+
+String get _displayCancellationPolicy => _apiProductData != null && _apiProductData!['cancellation_policy'] != null && _apiProductData!['cancellation_policy'].toString().isNotEmpty
+    ? _apiProductData!['cancellation_policy'] 
+    : 'Upto 5 days returnable';
+
+String get _displayTargetPests => _apiProductData != null && _apiProductData!['target_pests'] != null && _apiProductData!['target_pests'].toString().isNotEmpty
+    ? _apiProductData!['target_pests'] 
+    : 'Yellow mites, red mites, spotted mites, leaf miners, sucking insects';
+
+String get _displayTargetCrops => _apiProductData != null && _apiProductData!['target_crops'] != null && _apiProductData!['target_crops'].toString().isNotEmpty
+    ? _apiProductData!['target_crops'] 
+    : 'Grapes, roses, brinjal, chili, tea, cotton, ornamental plants';
+
+String get _displayDosage => _apiProductData != null && _apiProductData!['dosage'] != null && _apiProductData!['dosage'].toString().isNotEmpty
+    ? _apiProductData!['dosage'] 
+    : '1 ml per liter of water (200 ml per acre)';
+
+String get _displayAvailablePack => _apiProductData != null && _apiProductData!['available_pack'] != null && _apiProductData!['available_pack'].toString().isNotEmpty
+    ? _apiProductData!['available_pack'] 
+    : '50, 100, 250, 500, 1000 ml';
+
+String get _displayVideoUrl => _apiProductData != null && _apiProductData!['video'] != null && _apiProductData!['video'].toString().isNotEmpty
+    ? _apiProductData!['video'] 
+    : '';
   double? get _displayMrpPerSelectedUnit {
     if (_isOrderedProduct) {
       return widget.orderedProduct!.price;
     } else {
-      return _currentSelectedUnit?.price; // Use price from ProductSize
+      return _currentSelectedUnit?.price;
     }
   }
 
   double? get _displaySellingPricePerSelectedUnit {
     if (_isOrderedProduct) {
-      return widget.orderedProduct!.price; // For ordered products, selling price is the price
+      return widget.orderedProduct!.price;
     } else {
-      return _currentSelectedUnit?.sellingPrice; // Use sellingPrice from ProductSize
+      return _currentSelectedUnit?.sellingPrice;
     }
   }
 
   String get _displayUnitSizeDescription {
-    if (_isOrderedProduct) {
-      return 'Ordered Unit: ${widget.orderedProduct!.unit}';
-    } else {
-      return 'Unit: ${_currentSelectedUnit?.size ?? 'N/A'}'; // Use .size property
+        if (_isOrderedProduct) {
+          return 'Ordered Unit: ${widget.orderedProduct!.unit}';
+        } else {
+          return 'Unit: ${_currentSelectedUnit?.size ?? 'N/A'}';
+        }
+      }
+  
+  String get _displayCategory {
+      if (_isOrderedProduct) {
+        return widget.orderedProduct!.category;
+      } else {
+        return widget.product!.category;
+      }
     }
-  }
 
   Product _currentProductForActions() {
     if (_isOrderedProduct) {
-      // FIX 1: Ensure proId is passed when creating ProductSize from OrderedProduct
       final int proId = int.tryParse(widget.orderedProduct!.id) ?? 0;
       return Product(
         mainProductId: widget.orderedProduct!.id,
@@ -106,63 +156,303 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         category: widget.orderedProduct!.category,
         availableSizes: [
           ProductSize(
-            proId: proId, // Pass proId
+            proId: proId,
             size: widget.orderedProduct!.unit,
             price: widget.orderedProduct!.price,
             sellingPrice: widget.orderedProduct!.price,
           )
         ],
-        initialSelectedUnitProId: proId, // Set initialSelectedUnitProId
+        initialSelectedUnitProId: proId,
       );
     } else {
-      // Ensure _currentSelectedUnit is not null before passing to copyWith
-      // If _currentSelectedUnit is null (shouldn't happen after initState),
-      // fallback to the product's default selected unit.
-      return widget.product!.copyWith(selectedUnit: _currentSelectedUnit ?? widget.product!.selectedUnit); // Pass ProductSize object
+      return widget.product!.copyWith(selectedUnit: _currentSelectedUnit ?? widget.product!.selectedUnit);
     }
   }
 
-  @override
-  void initState() {
-    super.initState();
-    // Initialize _currentSelectedUnit based on whether it's an ordered product or a regular product
-    if (_isOrderedProduct) {
-      final int proId = int.tryParse(widget.orderedProduct!.id) ?? 0;
-      _currentSelectedUnit = ProductSize(
-        proId: proId,
-        size: widget.orderedProduct!.unit,
-        price: widget.orderedProduct!.price,
-        sellingPrice: widget.orderedProduct!.price,
-      );
-    } else {
-      _currentSelectedUnit = widget.product!.selectedUnit; // This is already a ProductSize object
-    }
-
-    // Use the _displayImageUrl (which applies fallback logic) for the carousel
-    String mainDisplayImage = _getEffectiveImageUrl(_displayImageUrl);
-    imageAssets = [mainDisplayImage, mainDisplayImage, mainDisplayImage]; // Repeat for carousel effect
-
-    _videoController = VideoPlayerController.asset('assets/video.mp4');
-    _initializeVideoPlayerFuture = _videoController!.initialize().then((_) {
-      setState(() {
-        _videoLoadError = false;
-      });
-    }).catchError((error) {
-      setState(() {
-        _videoLoadError = true;
-      });
+Future<void> _fetchProductDetails() async {
+  if (_isOrderedProduct) {
+    setState(() {
+      _isLoading = false;
     });
-    _videoController!.setLooping(true);
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadSimilarProducts();
-      _loadTopSellingProducts();
-    });
+    return;
   }
 
+  try {
+    // Get the mainProductId
+    String mainProductId = widget.product?.mainProductId ?? '0';
+    String proId = '0';
+    
+    print('Original mainProductId: $mainProductId');
+    
+    // First, try to get the selected unit's pro_id directly from the product
+    // This is more reliable as it comes from the selected unit
+    if (widget.product?.selectedUnit != null) {
+      proId = widget.product!.selectedUnit.proId.toString();
+      print('Using selected unit proId: $proId');
+    } else {
+      // If no selected unit, try to extract from mainProductId
+      // Format might be like "d_7_null" or "d_55_null" or "AURA 505_8_null"
+      if (mainProductId.contains('_')) {
+        final parts = mainProductId.split('_');
+        print('Split parts: $parts');
+        
+        // Look for the numeric part - usually the second part or any numeric part
+        for (var part in parts) {
+          // Try to parse as int, if successful and it's not "null"
+          final parsed = int.tryParse(part);
+          if (parsed != null && part.toLowerCase() != 'null') {
+            proId = part;
+            print('Found numeric proId: $proId from part: $part');
+            break;
+          }
+        }
+        
+        // If still not found, try the second part as fallback
+        if (proId == '0' && parts.length > 1 && parts[1].toLowerCase() != 'null') {
+          proId = parts[1];
+          print('Using second part as proId: $proId');
+        }
+      }
+    }
+    
+    // Final fallback
+    if (proId == '0') {
+      proId = mainProductId;
+      print('Using full mainProductId as fallback: $proId');
+    }
+    
+    print('Final proId to send to API: $proId');
+    
+    final response = await http.post(
+      Uri.parse('https://erpsmart.in/total/api/m_api/'),
+      body: {
+        'cid': '85788578',
+        'type': '1018',
+        'ln': '145',
+        'lt': '145',
+        'device_id': '12345',
+        'pro_id': proId,
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final jsonResponse = json.decode(response.body);
+      print('Product Response for pro_id $proId: $jsonResponse');
+      
+      if (jsonResponse['status'] == 'success' && jsonResponse['data'] != null) {
+        setState(() {
+          _apiProductData = jsonResponse['data'];
+          _isLoading = false;
+        });
+        
+        _initializeVideo();
+      } else {
+        print('API returned error or no data, using local product data');
+        setState(() {
+          _apiProductData = {
+            'product_id': proId,
+            'product_name': widget.product?.title ?? 'Product',
+            'product_description': widget.product?.subtitle ?? '',
+            'product_feature': 'Premium quality product',
+            'image': widget.product?.imageUrl ?? '',
+            'cancellation_policy': 'Upto 5 days returnable',
+            'target_pests': 'Yellow mites, red mites, spotted mites, leaf miners, sucking insects',
+            'target_crops': 'Grapes, roses, brinjal, chili, tea, cotton, ornamental plants',
+            'dosage': 'As per requirement',
+            'available_pack': _getAvailablePackFromSizes(),
+            'video': '',
+          };
+          _isLoading = false;
+        });
+        
+        _initializeVideo();
+      }
+    } else {
+      print('Server error: ${response.statusCode}, using local product data');
+      setState(() {
+        _apiProductData = {
+          'product_id': proId,
+          'product_name': widget.product?.title ?? 'Product',
+          'product_description': widget.product?.subtitle ?? '',
+          'product_feature': 'Premium quality product',
+          'image': widget.product?.imageUrl ?? '',
+          'cancellation_policy': 'Upto 5 days returnable',
+          'target_pests': 'Yellow mites, red mites, spotted mites, leaf miners, sucking insects',
+          'target_crops': 'Grapes, roses, brinjal, chili, tea, cotton, ornamental plants',
+          'dosage': 'As per requirement',
+          'available_pack': _getAvailablePackFromSizes(),
+          'video': '',
+        };
+        _isLoading = false;
+      });
+      
+      _initializeVideo();
+    }
+  } catch (e) {
+    print('Error in _fetchProductDetails: $e');
+    setState(() {
+      _apiProductData = {
+        'product_id': widget.product?.selectedUnit?.proId.toString() ?? '0',
+        'product_name': widget.product?.title ?? 'Product',
+        'product_description': widget.product?.subtitle ?? '',
+        'product_feature': 'Premium quality product',
+        'image': widget.product?.imageUrl ?? '',
+        'cancellation_policy': 'Upto 5 days returnable',
+        'target_pests': 'Yellow mites, red mites, spotted mites, leaf miners, sucking insects',
+        'target_crops': 'Grapes, roses, brinjal, chili, tea, cotton, ornamental plants',
+        'dosage': 'As per requirement',
+        'available_pack': _getAvailablePackFromSizes(),
+        'video': '',
+      };
+      _isLoading = false;
+    });
+    
+    _initializeVideo();
+  }
+}
+
+
+// Helper method to generate available pack string from product sizes
+String _getAvailablePackFromSizes() {
+  if (!_isOrderedProduct && widget.product?.availableSizes != null) {
+    final sizes = widget.product!.availableSizes
+        .where((size) => size.size.isNotEmpty && size.size != 'Unit')
+        .map((size) => size.size)
+        .toList();
+    
+    if (sizes.isNotEmpty) {
+      return sizes.join(', ');
+    }
+  }
+  return '50, 100, 250, 500, 1000 ml';
+}
+// Add this new method to load product sizes
+Future<void> _loadProductSizes(String proId) async {
+  try {
+    // Try to fetch product sizes from a different endpoint if available
+    final response = await http.post(
+      Uri.parse('https://erpsmart.in/total/api/m_api/'),
+      body: {
+        'cid': '85788578',
+        'type': '1019', // Different type for sizes
+        'ln': '145',
+        'lt': '145',
+        'device_id': '12345',
+        'pro_id': proId,
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final jsonResponse = json.decode(response.body);
+      print('Product sizes response: $jsonResponse');
+      
+      if (jsonResponse['status'] == 'success' && jsonResponse['data'] != null) {
+        // Update the product with sizes from API
+        // You'll need to implement this based on your API response structure
+      }
+    }
+  } catch (e) {
+    print('Error loading product sizes: $e');
+  }
+}
+
+void _initializeVideo() {
+  // Dispose existing controllers
+  _videoController?.dispose();
+  _youtubeController?.dispose();
+  
+  String videoUrl = _displayVideoUrl;
+  
+  if (videoUrl.isNotEmpty) {
+    if (videoUrl.contains('youtube.com') || videoUrl.contains('youtu.be') || videoUrl.contains('youtube.com/shorts')) {
+      // Handle YouTube video including shorts
+      String? videoId;
+      if (videoUrl.contains('shorts/')) {
+        // Extract ID from shorts URL: https://youtube.com/shorts/9344J2QRTVI
+        final uri = Uri.parse(videoUrl);
+        final pathSegments = uri.pathSegments;
+        if (pathSegments.isNotEmpty && pathSegments.last.isNotEmpty) {
+          videoId = pathSegments.last.split('?').first;
+        }
+      } else {
+        videoId = YoutubePlayer.convertUrlToId(videoUrl);
+      }
+      
+      if (videoId != null) {
+        _youtubeController = YoutubePlayerController(
+          initialVideoId: videoId,
+          flags: const YoutubePlayerFlags(
+            autoPlay: false,
+            mute: false,
+          ),
+        );
+        setState(() {
+          _videoLoadError = false;
+        });
+      } else {
+        setState(() {
+          _videoLoadError = true;
+        });
+      }
+    } else {
+      // Handle direct video file
+      _videoController = VideoPlayerController.network(videoUrl);
+      _initializeVideoPlayerFuture = _videoController!.initialize().then((_) {
+        setState(() {
+          _videoLoadError = false;
+        });
+      }).catchError((error) {
+        print('Video initialization error: $error');
+        setState(() {
+          _videoLoadError = true;
+        });
+      });
+      _videoController!.setLooping(true);
+    }
+  } else {
+    // No video URL provided, set error state or hide video section
+    setState(() {
+      _videoLoadError = true;
+    });
+  }
+}
+
+@override
+void initState() {
+  super.initState();
+  
+  if (_isOrderedProduct) {
+    final int proId = int.tryParse(widget.orderedProduct!.id) ?? 0;
+    _currentSelectedUnit = ProductSize(
+      proId: proId,
+      size: widget.orderedProduct!.unit,
+      price: widget.orderedProduct!.price,
+      sellingPrice: widget.orderedProduct!.price,
+    );
+  } else {
+    _currentSelectedUnit = widget.product!.selectedUnit;
+    // Print for debugging
+    print('Product mainProductId: ${widget.product!.mainProductId}');
+    print('Selected unit proId: ${widget.product!.selectedUnit.proId}');
+    print('Selected unit size: ${widget.product!.selectedUnit.size}');
+  }
+
+  // Fetch product details from API
+  _fetchProductDetails();
+
+  // Initialize with placeholder or product image
+  String mainDisplayImage = _getEffectiveImageUrl(_displayImageUrl);
+  imageAssets = [mainDisplayImage, mainDisplayImage, mainDisplayImage];
+
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    _loadSimilarProducts();
+    _loadTopSellingProducts();
+  });
+}
   @override
   void dispose() {
     _videoController?.dispose();
+    _youtubeController?.dispose();
     super.dispose();
   }
 
@@ -172,7 +462,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
 
     setState(() {
       similarProducts = productsInSameCategory
-          .where((p) => p.mainProductId != _currentProductForActions().mainProductId) // Compare by mainProductId
+          .where((p) => p.mainProductId != _currentProductForActions().mainProductId)
           .take(6)
           .toList();
       if (similarProducts.length < 6) {
@@ -193,11 +483,9 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     });
   }
 
-  // Add to cart with API integration
   Future<void> _addToCart(BuildContext context) async {
     final cart = Provider.of<CartModel>(context, listen: false);
 
-    // Ensure _currentSelectedUnit is not null before using it
     if (_currentSelectedUnit == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Please select a unit for the product.', style: GoogleFonts.poppins())),
@@ -223,14 +511,12 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     }
   }
 
-  // Increment quantity
   void _incrementQuantity() {
     setState(() {
       _quantity++;
     });
   }
 
-  // Decrement quantity
   void _decrementQuantity() {
     if (_quantity > 1) {
       setState(() {
@@ -246,22 +532,81 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     final themeMode = Provider.of<ThemeModeProvider>(context).themeMode;
     final isDarkMode = themeMode == ThemeMode.dark;
 
-    // Define colors based on theme
     final Color backgroundColor = isDarkMode ? Colors.black : const Color(0xFFFFF8F5);
     final Color gradientStartColor = isDarkMode ? Colors.black : const Color(0xffFFD9BD);
     final Color gradientEndColor = isDarkMode ? Colors.black : const Color(0xffFFFFFF);
     final Color textColor = isDarkMode ? Colors.white : Colors.black;
     final Color subtitleColor = isDarkMode ? Colors.white70 : Colors.black87;
     final Color greyTextColor = isDarkMode ? Colors.grey[400]! : Colors.grey;
-    final Color dividerColor = isDarkMode ? Colors.grey[700]! : Colors.white; // Using white for light mode divider as per original
+    final Color dividerColor = isDarkMode ? Colors.grey[700]! : Colors.white;
     final Color carouselBackgroundColor = isDarkMode ? Colors.grey[800]! : Colors.white70;
     final Color deliveryContainerColor = isDarkMode ? Colors.grey[900]! : Colors.white;
     final Color deliveryBorderColor = isDarkMode ? Colors.grey[700]! : const Color(0xFFDADADA);
     final Color quantityBorderColor = isDarkMode ? Colors.grey[600]! : Colors.grey.shade400;
     final Color orangeColor = const Color(0xffEB7720);
 
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: backgroundColor,
+        appBar: CustomAppBar(
+          title: 'Loading...',
+          showBackButton: true,
+          showMenuButton: false,
+          showWhatsAppIcon: false,
+          isMyOrderActive: false,
+          isWishlistActive: false,
+          isNotiActive: false,
+          isDetailPage: true,
+        ),
+        body: Center(
+          child: CircularProgressIndicator(color: themeOrange),
+        ),
+      );
+    }
+
+    if (_errorMessage != null && !_isOrderedProduct) {
+      return Scaffold(
+        backgroundColor: backgroundColor,
+        appBar: CustomAppBar(
+          title: 'Error',
+          showBackButton: true,
+          showMenuButton: false,
+          showWhatsAppIcon: false,
+          isMyOrderActive: false,
+          isWishlistActive: false,
+          isNotiActive: false,
+          isDetailPage: true,
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.error_outline, color: redColor, size: 60),
+              const SizedBox(height: 16),
+              Text(
+                'Failed to load product details',
+                style: GoogleFonts.poppins(fontSize: 18, color: textColor),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _errorMessage!,
+                style: GoogleFonts.poppins(fontSize: 14, color: subtitleColor),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: _fetchProductDetails,
+                style: ElevatedButton.styleFrom(backgroundColor: primaryColor),
+                child: Text('Retry', style: GoogleFonts.poppins(color: Colors.white)),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
-      backgroundColor: backgroundColor, // Apply theme color
+      backgroundColor: backgroundColor,
       appBar: CustomAppBar(
         title: _displayTitle,
         showBackButton: true,
@@ -277,7 +622,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [gradientStartColor, gradientEndColor], // Apply theme colors
+            colors: [gradientStartColor, gradientEndColor],
           ),
         ),
         child: ListView(
@@ -288,20 +633,20 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                 Container(
                   height: 200,
                   decoration: BoxDecoration(
-                    color: carouselBackgroundColor, // Apply theme color
+                    color: carouselBackgroundColor,
                     borderRadius: BorderRadius.circular(5),
                   ),
                   child: CarouselSlider.builder(
                     itemCount: imageAssets.length,
                     itemBuilder: (context, index, realIndex) {
-                      final imageUrl = imageAssets[index]; // This already comes from _getEffectiveImageUrl
+                      final imageUrl = imageAssets[index];
                       final bool isNetworkImage = imageUrl.startsWith('http');
                       return isNetworkImage
                           ? Image.network(
-                        imageUrl, // Use the already effective URL
+                        imageUrl,
                         fit: BoxFit.contain,
                         errorBuilder: (context, error, stackTrace) => Image.asset(
-                          'assets/placeholder.png', // Fallback to local placeholder if network image fails
+                          'assets/placeholder.png',
                           fit: BoxFit.contain,
                         ),
                       )
@@ -315,7 +660,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                     ),
                   ),
                 ),
-                // Share button positioned at top-right
                 Positioned(
                   top: 8,
                   right: 8,
@@ -325,13 +669,12 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                         SnackBar(content: Text('Share functionality coming soon!', style: GoogleFonts.poppins())),
                       );
                     },
-                    icon: Icon(Icons.share, color: greyTextColor, size: 28), // Apply theme color
+                    icon: Icon(Icons.share, color: greyTextColor, size: 28),
                     splashRadius: 24,
                   ),
                 ),
-                // Wishlist icon positioned below the share button
                 Positioned(
-                  top: 48, // Positioned below the share button (8 + 40 for the button height)
+                  top: 48,
                   right: 8,
                   child: Consumer<WishlistModel>(
                     builder: (context, wishlist, child) {
@@ -367,7 +710,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
               ],
             ),
 
-
             const SizedBox(height: 8),
             Center(
               child: AnimatedSmoothIndicator(
@@ -381,9 +723,9 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
               ),
             ),
             const SizedBox(height: 16),
-            Text(_displayTitle, style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.bold, color: textColor)), // Apply theme color
-            Text(_displaySubtitle, style: GoogleFonts.poppins(fontSize: 14, color: subtitleColor)), // Apply theme color
-            Text(_displayCategory, style: GoogleFonts.poppins(fontSize: 14, color: greyTextColor)), // Apply theme color
+            Text(_displayTitle, style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.bold, color: textColor)),
+            Text(_displaySubtitle, style: GoogleFonts.poppins(fontSize: 14, color: subtitleColor)),
+            Text(_displayCategory, style: GoogleFonts.poppins(fontSize: 14, color: greyTextColor)),
             const SizedBox(height: 10),
             if (!_isOrderedProduct)
               SizedBox(
@@ -396,11 +738,11 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                       child: TextButton(
                         onPressed: () {
                           setState(() {
-                            _currentSelectedUnit = productSize; // FIX 3: Assign the ProductSize object
+                            _currentSelectedUnit = productSize;
                           });
                         },
                         style: TextButton.styleFrom(
-                          backgroundColor: _currentSelectedUnit?.proId == productSize.proId ? themeOrange : Colors.transparent, // Compare by proId
+                          backgroundColor: _currentSelectedUnit?.proId == productSize.proId ? themeOrange : Colors.transparent,
                           side: BorderSide(color: themeOrange),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -410,7 +752,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                           style: GoogleFonts.poppins(
                             fontSize: 15,
                             fontWeight: FontWeight.bold,
-                            color: _currentSelectedUnit?.proId == productSize.proId ? Colors.white : themeOrange, // Compare by proId
+                            color: _currentSelectedUnit?.proId == productSize.proId ? Colors.white : themeOrange,
                           ),
                         ),
                       ),
@@ -433,7 +775,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                 ],
               ),
 
-            // Quantity selector for non-ordered products
             if (!_isOrderedProduct)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 16.0),
@@ -486,7 +827,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                   'M.R.P.: ₹ ${_displayMrpPerSelectedUnit?.toStringAsFixed(2) ?? 'N/A'}',
                   style: GoogleFonts.poppins(
                     fontSize: 16,
-                    color: greyTextColor, // Apply theme color
+                    color: greyTextColor,
                     decoration: (_displaySellingPricePerSelectedUnit != null && _displaySellingPricePerSelectedUnit != _displayMrpPerSelectedUnit)
                         ? TextDecoration.lineThrough
                         : TextDecoration.none,
@@ -502,13 +843,13 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                   ),
               ],
             ),
-            Text(_displayUnitSizeDescription, style: GoogleFonts.poppins(fontSize: 14, color: subtitleColor)), // Apply theme color
+            Text(_displayUnitSizeDescription, style: GoogleFonts.poppins(fontSize: 14, color: subtitleColor)),
             const SizedBox(height: 8),
             Text(
               _isOrderedProduct
                   ? 'Total for ordered quantity: ₹ ${((_displayMrpPerSelectedUnit ?? 0.0) * widget.orderedProduct!.quantity).toStringAsFixed(2)}'
-                  : 'Price for ${_currentSelectedUnit?.size ?? 'N/A'}: ₹ ${((_displaySellingPricePerSelectedUnit ?? _displayMrpPerSelectedUnit ?? 0.0) * _quantity).toStringAsFixed(2)}', // Use .size and multiply by quantity
-              style: GoogleFonts.poppins(color: subtitleColor), // Apply theme color
+                  : 'Price for ${_currentSelectedUnit?.size ?? 'N/A'}: ₹ ${((_displaySellingPricePerSelectedUnit ?? _displayMrpPerSelectedUnit ?? 0.0) * _quantity).toStringAsFixed(2)}',
+              style: GoogleFonts.poppins(color: subtitleColor),
             ),
             const SizedBox(height: 10),
             Row(
@@ -519,16 +860,15 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                     style: OutlinedButton.styleFrom(
                         foregroundColor: primaryColor,
                         side: BorderSide(color: primaryColor),
-                        textStyle: GoogleFonts.poppins(color: primaryColor) // Ensure text color is set
+                        textStyle: GoogleFonts.poppins(color: primaryColor)
                     ),
-                    child: Text('Put in Cart', style: GoogleFonts.poppins(color: primaryColor)), // Explicitly set text color
+                    child: Text('Put in Cart', style: GoogleFonts.poppins(color: primaryColor)),
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: ElevatedButton(
                     onPressed: () {
-                      // Ensure _currentSelectedUnit is not null before using it
                       if (_currentSelectedUnit == null) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(content: Text('Please select a unit for the product.', style: GoogleFonts.poppins())),
@@ -549,123 +889,48 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
               ],
             ),
             const SizedBox(height: 10),
-            Divider(color: dividerColor, thickness: 3), // Apply theme color
+            Divider(color: dividerColor, thickness: 3),
             const SizedBox(height: 20),
-            _buildHeaderSection('Cancellation Policy', isDarkMode), // Pass isDarkMode
+            _buildHeaderSection('Cancellation Policy', isDarkMode),
             const SizedBox(height: 8),
-            _buildDottedText('Upto 5 days returnable', isDarkMode), // Pass isDarkMode
-            _buildDottedText('Wrong product received', isDarkMode), // Pass isDarkMode
-            _buildDottedText('Damaged product received', isDarkMode), // Pass isDarkMode
+            _buildDottedText(_displayCancellationPolicy, isDarkMode),
             const SizedBox(height: 20),
-            Divider(color: dividerColor, thickness: 3), // Apply theme color
+            Divider(color: dividerColor, thickness: 3),
             const SizedBox(height: 20),
-            _buildHeaderSection('About Product', isDarkMode), // Pass isDarkMode
+            _buildHeaderSection('About Product', isDarkMode),
             const SizedBox(height: 8),
             Text(
-              '$_displaySubtitle\n\nAbamectin 1.9% EC is a broad-spectrum insecticide and acaricide, effective against a wide range of mites and insects, particularly those that are motile or sucking, working through contact and stomach action, and also exhibiting translaminar activity.',
-              style: GoogleFonts.poppins(fontSize: 14, color: subtitleColor), // Apply theme color
+              '$_displaySubtitle\n\n${_apiProductData != null ? _apiProductData!['product_feature'] ?? '' : ''}',
+              style: GoogleFonts.poppins(fontSize: 14, color: subtitleColor),
             ),
             const SizedBox(height: 12),
-            _buildHeaderSection('Target Pests', isDarkMode), // Pass isDarkMode
+            _buildHeaderSection('Target Pests', isDarkMode),
             const SizedBox(height: 8),
-            _buildDottedText('Yellow mites, red mites, spotted mites, leaf miners, sucking insects', isDarkMode), // Pass isDarkMode
+            _buildDottedText(_displayTargetPests, isDarkMode),
             const SizedBox(height: 12),
-            _buildHeaderSection('Target Crops', isDarkMode), // Pass isDarkMode
+            _buildHeaderSection('Target Crops', isDarkMode),
             const SizedBox(height: 8),
-            _buildDottedText('Grapes, roses, brinjal, chili, tea, cotton, ornamental plants', isDarkMode), // Pass isDarkMode
+            _buildDottedText(_displayTargetCrops, isDarkMode),
             const SizedBox(height: 12),
-            _buildHeaderSection('Dosage', isDarkMode), // Pass isDarkMode
+            _buildHeaderSection('Dosage', isDarkMode),
             const SizedBox(height: 8),
-            _buildDottedText('1 ml per liter of water (200 ml per acre)', isDarkMode), // Pass isDarkMode
+            _buildDottedText(_displayDosage, isDarkMode),
             const SizedBox(height: 12),
-            _buildHeaderSection('Available Pack', isDarkMode), // Pass isDarkMode
+            _buildHeaderSection('Available Pack', isDarkMode),
             const SizedBox(height: 8),
-            _buildDottedText('50, 100, 250, 500, 1000 ml', isDarkMode), // Pass isDarkMode
+            _buildDottedText(_displayAvailablePack, isDarkMode),
             const SizedBox(height: 15),
-            Divider(color: dividerColor, thickness: 3), // Apply theme color
+            Divider(color: dividerColor, thickness: 3),
             const SizedBox(height: 20),
-            _buildHeaderSection('Tutorial Video', isDarkMode), // Pass isDarkMode
+            _buildHeaderSection('Tutorial Video', isDarkMode),
             const SizedBox(height: 8),
-            FutureBuilder(
-              future: _initializeVideoPlayerFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.done) {
-                  if (_videoLoadError) {
-                    return Container(
-                      height: 200,
-                      color: isDarkMode ? Colors.red.shade900 : Colors.red.shade100, // Apply theme color
-                      child: Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.error, color: isDarkMode ? Colors.red.shade300 : Colors.red, size: 40), // Apply theme color
-                            const SizedBox(height: 10),
-                            Text(
-                              'Could not load video. Check asset path or file format.',
-                              textAlign: TextAlign.center,
-                              style: GoogleFonts.poppins(color: isDarkMode ? Colors.red.shade300 : Colors.red, fontSize: 14), // Apply theme color
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  } else {
-                    return AspectRatio(
-                      aspectRatio: _videoController!.value.aspectRatio,
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          VideoPlayer(_videoController!),
-                          GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                _videoController!.value.isPlaying ? _videoController!.pause() : _videoController!.play();
-                              });
-                            },
-                            child: Container(
-                              color: Colors.black.withOpacity(0.3),
-                              child: Center(
-                                child: Icon(
-                                  _videoController!.value.isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill,
-                                  color: Colors.white,
-                                  size: 70,
-                                ),
-                              ),
-                            ),
-                          ),
-                          Positioned(
-                            bottom: 0,
-                            left: 0,
-                            right: 0,
-                            child: VideoProgressIndicator(
-                              _videoController!,
-                              allowScrubbing: true,
-                              colors: VideoProgressColors(
-                                playedColor: themeOrange,
-                                bufferedColor: isDarkMode ? Colors.grey[600]! : Colors.grey, // Apply theme color
-                                backgroundColor: isDarkMode ? Colors.white38 : Colors.white54, // Apply theme color
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-                } else {
-                  return Container(
-                    height: 200,
-                    color: isDarkMode ? Colors.grey[800] : Colors.grey.shade300, // Apply theme color
-                    child: Center(child: CircularProgressIndicator(color: themeOrange)),
-                  );
-                }
-              },
-            ),
+            _buildVideoPlayer(isDarkMode),
             SizedBox(height: 20,),
-            Divider(color: dividerColor, thickness: 3), // Apply theme color
+            Divider(color: dividerColor, thickness: 3),
             const SizedBox(height: 20),
-            _buildHeaderSection("Browse Similar Products", isDarkMode), // Pass isDarkMode
+            _buildHeaderSection("Browse Similar Products", isDarkMode),
             SizedBox(
-              height: 280, // Reduced height for more compact cards
+              height: 240,
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
                 itemCount: similarProducts.length,
@@ -674,13 +939,11 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                   final product = similarProducts[index];
                   return Padding(
                     padding: EdgeInsets.only(
-                      left: index == 0 ? 1.0 : 0, // Add left padding only for first item
+                      left: index == 0 ? 1.0 : 0,
                       right: 1.0,
                     ),
                     child: GestureDetector(
                       onTap: () {
-                        // When a similar product is tapped, navigate to a new ProductDetailPage
-                        // and ensure it's wrapped with a ChangeNotifierProvider for that specific product.
                         Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -691,10 +954,9 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                           ),
                         );
                       },
-                      // Wrap _buildProductTile with a ChangeNotifierProvider for the product
                       child: ChangeNotifierProvider<Product>.value(
                         value: product,
-                        child: _buildProductTile(context, product, isDarkMode, index), // Pass index for margin calculation
+                        child: _buildProductTile(context, product, isDarkMode, index),
                       ),
                     ),
                   );
@@ -702,11 +964,11 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
               ),
             ),
             const SizedBox(height: 20),
-            Divider(color: dividerColor, thickness: 3), // Apply theme color
+            Divider(color: dividerColor, thickness: 3),
             const SizedBox(height: 20),
-            _buildHeaderSection("Top Selling Products", isDarkMode), // Pass isDarkMode
+            _buildHeaderSection("Top Selling Products", isDarkMode),
             SizedBox(
-              height: 280, // Reduced height for more compact cards
+              height: 240,
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
                 itemCount: topSellingProducts.length,
@@ -715,13 +977,11 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                   final product = topSellingProducts[index];
                   return Padding(
                     padding: EdgeInsets.only(
-                      left: index == 0 ? 1.0 : 0, // Add left padding only for first item
+                      left: index == 0 ? 1.0 : 0,
                       right: 1.0,
                     ),
                     child: GestureDetector(
                       onTap: () {
-                        // When a top selling product is tapped, navigate to a new ProductDetailPage
-                        // and ensure it's wrapped with a ChangeNotifierProvider for that specific product.
                         Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -732,10 +992,9 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                           ),
                         );
                       },
-                      // Wrap _buildProductTile with a ChangeNotifierProvider for the product
                       child: ChangeNotifierProvider<Product>.value(
                         value: product,
-                        child: _buildProductTile(context, product, isDarkMode, index), // Pass index for margin calculation
+                        child: _buildProductTile(context, product, isDarkMode, index),
                       ),
                     ),
                   );
@@ -749,11 +1008,110 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     );
   }
 
+  Widget _buildVideoPlayer(bool isDarkMode) {
+    if (_youtubeController != null) {
+      return YoutubePlayerBuilder(
+        player: YoutubePlayer(
+          controller: _youtubeController!,
+          showVideoProgressIndicator: true,
+          progressIndicatorColor: themeOrange,
+          onReady: () {
+            // Controller is ready
+          },
+        ),
+        builder: (context, player) {
+          return Column(
+            children: [
+              player,
+              const SizedBox(height: 8),
+              // No VideoProgressIndicator for YouTube as it's already shown in the player
+            ],
+          );
+        },
+      );
+    }
+
+    return FutureBuilder(
+      future: _initializeVideoPlayerFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.done) {
+          if (_videoLoadError || _videoController == null) {
+            return Container(
+              height: 200,
+              color: isDarkMode ? Colors.red.shade900 : Colors.red.shade100,
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.error, color: isDarkMode ? Colors.red.shade300 : Colors.red, size: 40),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Could not load video. Check URL or file format.',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.poppins(color: isDarkMode ? Colors.red.shade300 : Colors.red, fontSize: 14),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          } else {
+            return AspectRatio(
+              aspectRatio: _videoController!.value.aspectRatio,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  VideoPlayer(_videoController!),
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _videoController!.value.isPlaying ? _videoController!.pause() : _videoController!.play();
+                      });
+                    },
+                    child: Container(
+                      color: Colors.black.withOpacity(0.3),
+                      child: Center(
+                        child: Icon(
+                          _videoController!.value.isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill,
+                          color: Colors.white,
+                          size: 70,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    child: VideoProgressIndicator(
+                      _videoController!,
+                      allowScrubbing: true,
+                      colors: VideoProgressColors(
+                        playedColor: themeOrange,
+                        bufferedColor: isDarkMode ? Colors.grey[600]! : Colors.grey,
+                        backgroundColor: isDarkMode ? Colors.white38 : Colors.white54,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
+        } else {
+          return Container(
+            height: 200,
+            color: isDarkMode ? Colors.grey[800] : Colors.grey.shade300,
+            child: Center(child: CircularProgressIndicator(color: themeOrange)),
+          );
+        }
+      },
+    );
+  }
+
   Widget _buildHeaderSection(String title, bool isDarkMode) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 8),
     child: Text(
       title,
-      style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 16, color: isDarkMode ? Colors.white : Colors.black), // Apply theme color
+      style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 16, color: isDarkMode ? Colors.white : Colors.black),
     ),
   );
 
@@ -765,18 +1123,17 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         children: [
           Padding(
             padding: const EdgeInsets.only(top: 6.0),
-            child: Icon(Icons.circle, size: 6, color: isDarkMode ? Colors.white : Colors.black), // Apply theme color
+            child: Icon(Icons.circle, size: 6, color: isDarkMode ? Colors.white : Colors.black),
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(text, style: GoogleFonts.poppins(fontSize: 14, color: isDarkMode ? Colors.white70 : Colors.black87)), // Apply theme color
+            child: Text(text, style: GoogleFonts.poppins(fontSize: 14, color: isDarkMode ? Colors.white70 : Colors.black87)),
           ),
         ],
       ),
     );
   }
 
-  // This _buildProductTile is used for similar and top-selling products.
   Widget _buildProductTile(BuildContext context, Product product, bool isDarkMode, int index) {
     final themeOrange = const Color(0xffEB7720);
     final redColor = const Color(0xFFDC2F2F);
@@ -785,44 +1142,40 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     final Color textColor = isDarkMode ? Colors.white : Colors.black;
     final Color greyTextColor = isDarkMode ? Colors.grey[400]! : Colors.grey;
 
-    // Consume the product here to react to its selectedUnit changes
     return Consumer<Product>(
       builder: (context, product, child) {
-        // Ensure effectiveAvailableSizes is never empty.
         final List<ProductSize> effectiveAvailableSizes = product.availableSizes.isNotEmpty
             ? product.availableSizes
-            : [ProductSize(proId: 0, size: 'Unit', price: 0.0, sellingPrice: 0.0)]; // FIX 1: Add proId
+            : [ProductSize(proId: 0, size: 'Unit', price: 0.0, sellingPrice: 0.0)];
 
-        // Resolve the selected unit for the dropdown
-        // Find the ProductSize object that matches the currently selected unit's proId
         ProductSize currentSelectedUnit = effectiveAvailableSizes.firstWhere(
-              (sizeOption) => sizeOption.proId == product.selectedUnit.proId, // Compare by proId
-          orElse: () => effectiveAvailableSizes.first, // Fallback to first if not found
+              (sizeOption) => sizeOption.proId == product.selectedUnit.proId,
+          orElse: () => effectiveAvailableSizes.first,
         );
 
-        final double? currentMrp = currentSelectedUnit.price; // Use price from currentSelectedUnit
-        final double? currentSellingPrice = currentSelectedUnit.sellingPrice; // Use sellingPrice from currentSelectedUnit
+        final double? currentMrp = currentSelectedUnit.price;
+        final double? currentSellingPrice = currentSelectedUnit.sellingPrice;
 
         return Container(
-          width: 140, // Reduced width for more compact cards
+          width: 140,
           margin: EdgeInsets.only(
-            left: index == 0 ? 0 : 8, // Add left margin for all except first card
+            left: index == 0 ? 0 : 8,
             right: 8,
           ),
           decoration: BoxDecoration(
-            color: cardBackgroundColor, // Apply theme color
+            color: cardBackgroundColor,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: borderColor), // Apply theme color
+            border: Border.all(color: borderColor),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SizedBox(
-                height: 90, // Reduced height for image
+                height: 90,
                 width: double.infinity,
                 child: Center(
                   child: Padding(
-                    padding: const EdgeInsets.all(6.0), // Reduced padding
+                    padding: const EdgeInsets.all(6.0),
                     child: _getEffectiveImageUrl(product.imageUrl).startsWith('http')
                         ? Image.network(
                       _getEffectiveImageUrl(product.imageUrl),
@@ -840,31 +1193,31 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.all(6.0), // Reduced padding
+                padding: const EdgeInsets.all(6.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       product.title,
-                      style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 12, color: textColor), // Smaller font
+                      style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 12, color: textColor),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 2), // Reduced spacing
+                    const SizedBox(height: 2),
                     Text(
                       product.subtitle,
-                      style: GoogleFonts.poppins(fontSize: 10, color: textColor), // Smaller font
+                      style: GoogleFonts.poppins(fontSize: 10, color: textColor),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 4), // Reduced spacing
+                    const SizedBox(height: 4),
                     Row(
                       children: [
                         Text(
                           '₹ ${currentMrp?.toStringAsFixed(2) ?? 'N/A'}',
                           style: GoogleFonts.poppins(
-                            fontSize: 10, // Smaller font
-                            color: greyTextColor, // Apply theme color
+                            fontSize: 10,
+                            color: greyTextColor,
                             decoration: (currentSellingPrice != null && currentSellingPrice != currentMrp)
                                 ? TextDecoration.lineThrough
                                 : TextDecoration.none,
@@ -875,19 +1228,18 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                             padding: const EdgeInsets.only(left: 4.0),
                             child: Text(
                               '₹ ${currentSellingPrice.toStringAsFixed(2)}',
-                              style: GoogleFonts.poppins(fontSize: 12, color: Colors.green, fontWeight: FontWeight.w600), // Smaller font
+                              style: GoogleFonts.poppins(fontSize: 12, color: Colors.green, fontWeight: FontWeight.w600),
                             ),
                           ),
                       ],
                     ),
-                    const SizedBox(height: 2), // Reduced spacing
-                    Text('Unit: ${currentSelectedUnit.size}', // FIX 2: Use .size property
-                        style: GoogleFonts.poppins(fontSize: 9, color: themeOrange)), // Smaller font
-                    const SizedBox(height: 6), // Reduced spacing
-                    // REPLACED DROPDOWN WITH SIZE SELECTION CONTAINER (like homepage)
+                    const SizedBox(height: 2),
+                    Text('Unit: ${currentSelectedUnit.size}',
+                        style: GoogleFonts.poppins(fontSize: 9, color: themeOrange)),
+                    const SizedBox(height: 6),
                     Container(
-                      height: 30, // Reduced height
-                      padding: const EdgeInsets.symmetric(horizontal: 6), // Reduced padding
+                      height: 30,
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
                       decoration: BoxDecoration(
                         border: Border.all(color: themeOrange),
                         borderRadius: BorderRadius.circular(6),
@@ -902,94 +1254,12 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                           children: [
                             Text(
                               currentSelectedUnit.size,
-                              style: GoogleFonts.poppins(fontSize: 10, color: textColor), // Smaller font
+                              style: GoogleFonts.poppins(fontSize: 10, color: textColor),
                             ),
-                            Icon(Icons.arrow_drop_down, color: textColor, size: 16), // Smaller icon
+                            Icon(Icons.arrow_drop_down, color: textColor, size: 16),
                           ],
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 6), // Reduced spacing
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Consumer<WishlistModel>(
-                          builder: (context, wishlist, child) {
-                            final bool isFavorite = wishlist.containsItem(currentSelectedUnit.proId); // FIX 4: Use proId
-                            return IconButton(
-                              onPressed: () async {
-                                final success = await wishlist.toggleItem(product);
-                                if (success != null) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        isFavorite
-                                            ? '${product.title} removed from wishlist!'
-                                            : '${product.title} added to wishlist!',
-                                        style: GoogleFonts.poppins(),
-                                      ),
-                                      backgroundColor: isFavorite ? redColor : Colors.blue,
-                                    ),
-                                  );
-                                }
-                              },
-                              icon: Icon(
-                                isFavorite ? Icons.favorite : Icons.favorite_border,
-                                color: isFavorite ? themeOrange : greyTextColor, // Apply theme color - orange when selected
-                                size: 18, // Smaller icon
-                              ),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                            );
-                          },
-                        ),
-                        const SizedBox(width: 8), // Added space between wishlist and add button
-                        // REPLACED CART ICON WITH ADD BUTTON
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () async {
-                              final cart = Provider.of<CartModel>(context, listen: false);
-                              try {
-                                await cart.addItem(product);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      '${product.title} (${product.selectedUnit.size}) added to cart!',
-                                      style: GoogleFonts.poppins(),
-                                    ),
-                                    backgroundColor: Colors.green,
-                                  ),
-                                );
-                              } catch (e) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      'Failed to add to cart: $e',
-                                      style: GoogleFonts.poppins(),
-                                    ),
-                                    backgroundColor: Colors.red,
-                                  ),
-                                );
-                              }
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: themeOrange,
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4), // Reduced padding
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(5),
-                              ),
-                            ),
-                            child: Text(
-                              "Add",
-                              style: GoogleFonts.poppins(
-                                color: Colors.white,
-                                fontSize: 10, // Smaller font
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
                     ),
                   ],
                 ),
@@ -1042,7 +1312,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                   final bool isSelected = product.selectedUnit.proId == sizeOption.proId;
                   return GestureDetector(
                     onTap: () {
-                      // Update the product's selected unit
                       product.selectedUnit = sizeOption;
                       Navigator.pop(context);
                     },

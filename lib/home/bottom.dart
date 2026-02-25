@@ -4,8 +4,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:kisangro/home/cart.dart';
 import 'package:kisangro/home/categories.dart';
 import 'package:kisangro/home/homepage.dart';
-import 'package:kisangro/home/reward_screen.dart';
-import 'package:kisangro/home/rewards_popup.dart';
+// import 'package:kisangro/home/reward_screen.dart';
+// import 'package:kisangro/home/rewards_popup.dart';
 import 'package:provider/provider.dart';
 import 'package:kisangro/models/cart_model.dart';
 
@@ -31,17 +31,19 @@ class _BotState extends State<Bot> {
     super.initState();
     _selectedIndex = widget.initialIndex;
 
-    if (widget.showRewardsPopup && widget.initialIndex == 0) {
-      SchedulerBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (BuildContext dialogContext) => const RewardsPopup(coinsEarned: 100),
-          );
-        }
-      });
-    }
+    // ❌ Rewards popup disabled
+    // if (widget.showRewardsPopup && widget.initialIndex == 0) {
+    //   SchedulerBinding.instance.addPostFrameCallback((_) {
+    //     if (mounted) {
+    //       showDialog(
+    //         context: context,
+    //         barrierDismissible: false,
+    //         builder: (BuildContext dialogContext) =>
+    //             const RewardsPopup(coinsEarned: 100),
+    //       );
+    //     }
+    //   });
+    // }
   }
 
   @override
@@ -58,13 +60,14 @@ class _BotState extends State<Bot> {
     Builder(builder: (context) {
       return HomePage(
         onCategoryViewAll: () {
-          final _BotState? botState = context.findAncestorStateOfType<_BotState>();
+          final _BotState? botState =
+              context.findAncestorStateOfType<_BotState>();
           botState?._onItemTapped(1);
         },
       );
     }),
     const ProductCategoriesScreen(),
-    const RewardScreen(),
+    // const RewardScreen(), ❌ removed
     const Cart(),
   ];
 
@@ -119,7 +122,9 @@ class _BotState extends State<Bot> {
                   'assets/home.png',
                   width: 24,
                   height: 24,
-                  color: _selectedIndex == 0 ? const Color(0xffEB7720) : const Color(0xff575757),
+                  color: _selectedIndex == 0
+                      ? const Color(0xffEB7720)
+                      : const Color(0xff575757),
                 ),
                 label: "Home",
               ),
@@ -128,36 +133,32 @@ class _BotState extends State<Bot> {
                   'assets/cat.png',
                   width: 24,
                   height: 24,
-                  color: _selectedIndex == 1 ? const Color(0xffEB7720) : const Color(0xff575757),
+                  color: _selectedIndex == 1
+                      ? const Color(0xffEB7720)
+                      : const Color(0xff575757),
                 ),
                 label: "Categories",
               ),
-              BottomNavigationBarItem(
-                icon: Image.asset(
-                  'assets/reward.png',
-                  width: 24,
-                  height: 24,
-                  color: _selectedIndex == 2 ? const Color(0xffEB7720) : const Color(0xff575757),
-                ),
-                label: "Rewards",
-              ),
-              // Cart item with badge
+
+              // 🛒 Cart with badge
               BottomNavigationBarItem(
                 icon: Consumer<CartModel>(
                   builder: (context, cart, child) {
                     return Stack(
-                      clipBehavior: Clip.none, // Allow badge to overflow
+                      clipBehavior: Clip.none,
                       children: [
                         Image.asset(
                           'assets/cart.png',
                           width: 24,
                           height: 24,
-                          color: _selectedIndex == 3 ? const Color(0xffEB7720) : const Color(0xff575757),
+                          color: _selectedIndex == 2
+                              ? const Color(0xffEB7720)
+                              : const Color(0xff575757),
                         ),
                         if (cart.totalItemCount > 0)
                           Positioned(
-                            right: -4, // Adjust position to not cover the icon
-                            top: -4,   // Adjust position to not cover the icon
+                            right: -4,
+                            top: -4,
                             child: Container(
                               padding: const EdgeInsets.all(2),
                               decoration: BoxDecoration(
@@ -169,7 +170,9 @@ class _BotState extends State<Bot> {
                                 minHeight: 14,
                               ),
                               child: Text(
-                                cart.totalItemCount > 9 ? '9+' : cart.totalItemCount.toString(),
+                                cart.totalItemCount > 9
+                                    ? '9+'
+                                    : cart.totalItemCount.toString(),
                                 style: GoogleFonts.poppins(
                                   color: Colors.white,
                                   fontSize: 8,

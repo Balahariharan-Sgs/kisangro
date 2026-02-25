@@ -10,10 +10,13 @@ import 'dart:async';
 import 'package:kisangro/login/login.dart';
 import 'package:provider/provider.dart';
 import '../home/theme_mode_provider.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 import 'package:geolocator/geolocator.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'dart:io';
+import 'package:permission_handler/permission_handler.dart';
 
 class splashscreen extends StatefulWidget {
   const splashscreen({super.key});
@@ -26,7 +29,52 @@ class _splashscreenState extends State<splashscreen> {
   @override
   void initState() {
     super.initState();
-    _checkLoginStatusAndNavigate();
+    _initializeApp();
+  }
+
+  Future<void> _initializeApp() async {
+    // First, request location permission (regardless of login status)
+    await _handleLocationPermission();
+    
+    // Then proceed with login check and navigation
+    await _checkLoginStatusAndNavigate();
+  }
+
+  Future<void> _handleLocationPermission() async {
+    bool permissionGranted = await _forceAskLocationPermission();
+    
+    if (permissionGranted) {
+      await _storeLocationAndDeviceId();
+    } else {
+      debugPrint("⚠️ Location permission denied by user");
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble('latitude', 0.0);
+      await prefs.setDouble('longitude', 0.0);
+    }
+  }
+
+  Future<bool> _forceAskLocationPermission() async {
+    var status = await Permission.locationWhenInUse.status;
+
+    if (status.isGranted) {
+      debugPrint("✅ Location already granted");
+      return true;
+    }
+
+    debugPrint("📢 Requesting location permission from user...");
+    status = await Permission.locationWhenInUse.request();
+
+    if (status.isGranted) {
+      debugPrint("✅ Location granted via popup");
+      return true;
+    }
+
+    if (status.isPermanentlyDenied) {
+      debugPrint("🚫 Permanently denied — opening settings");
+      await openAppSettings();
+    }
+
+    return false;
   }
 
   Future<void> _generateAndStoreFCMToken() async {
@@ -43,101 +91,164 @@ class _splashscreenState extends State<splashscreen> {
         await prefs.setString('fcm_token', token);
 
         debugPrint("🔥 FCM Token saved: $token");
+        
+        // Send token to server after saving
+        await _sendNotificationTokenToServer();
       }
     } catch (e) {
       debugPrint("FCM Token error: $e");
     }
   }
 
-  Future<void> _checkLoginStatusAndNavigate() async {
-    await Future.delayed(const Duration(seconds: 3));
-
-    if (!mounted) {
-      return;
-    }
-
-    // ---------------- STORE LOCATION & DEVICE ID ----------------
-    await _storeLocationAndDeviceId();
-    await _generateAndStoreFCMToken(); // ✅ ADD THIS
-
+  // ================= NEW: Send Notification Token to Server =================
+  Future<void> _sendNotificationTokenToServer() async {
     try {
-      debugPrint('SplashScreen: Starting to load product data...');
-     // await ProductService.loadProductsFromApi();
-      await ProductService.loadCategoriesFromApi();
-      debugPrint(
-        'SplashScreen: Product and Category data loaded successfully.',
-      );
-    } catch (e) {
-      debugPrint('SplashScreen: Failed to load product/category data: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Failed to load app data: $e. Please check your internet connection.',
-              style: const TextStyle(color: Colors.white),
-            ),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5),
-          ),
-        );
+      final prefs = await SharedPreferences.getInstance();
+      
+      // Get all required data from SharedPreferences
+      String? fcmToken = prefs.getString('fcm_token');
+      double? latitude = prefs.getDouble('latitude');
+      double? longitude = prefs.getDouble('longitude');
+      String? deviceId = prefs.getString('device_id');
+      int? customerId = prefs.getInt('cus_id'); // Make sure this is stored during login
+      
+      // If customerId is not stored as int, try getting as string and parse
+      if (customerId == null) {
+        String? cusIdString = prefs.getString('cus_id');
+        if (cusIdString != null) {
+          customerId = int.tryParse(cusIdString);
+        }
       }
-      return;
+
+      // Validate required data
+      if (fcmToken == null || fcmToken.isEmpty) {
+        debugPrint('FCM Token not available yet');
+        return;
+      }
+
+      if (customerId == null) {
+        debugPrint('Customer ID not available - user might not be logged in');
+        return;
+      }
+
+      // Prepare the API URL
+      final String apiUrl = 'https://erpsmart.in/total/api/m_api/';
+      
+      // Prepare parameters
+      final Map<String, String> params = {
+        'cid': '85788578',
+        'type': '1030',
+        'ln': latitude?.toString() ?? '0', // Default to '0' if not available
+        'lt': longitude?.toString() ?? '0', // Default to '0' if not available
+        'device_id': deviceId ?? '12345', // Fallback to provided example
+        'cus_id': customerId.toString(),
+        'fcm_token': fcmToken,
+      };
+
+      debugPrint('Sending notification token to server with params: $params');
+
+      // Make the API call
+      final response = await http.post(
+        Uri.parse(apiUrl),
+        body: params,
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          debugPrint('Notification API timeout');
+          return http.Response('Timeout', 408);
+        },
+      );
+
+      if (response.statusCode == 200) {
+        try {
+          final responseData = json.decode(response.body);
+          debugPrint('Notification API response: $responseData');
+          
+          // Check if response indicates success (adjust based on your API response structure)
+          if (responseData['status'] == 'success' || responseData['success'] == true) {
+            debugPrint('✅ FCM token successfully registered on server');
+            
+            // Optionally store that token was synced
+            await prefs.setBool('fcm_token_synced', true);
+          } else {
+            debugPrint('⚠️ Server returned non-success status: $responseData');
+          }
+        } catch (e) {
+          debugPrint('Error parsing notification API response: $e');
+          debugPrint('Raw response: ${response.body}');
+        }
+      } else {
+        debugPrint('❌ Failed to send FCM token. Status: ${response.statusCode}');
+        debugPrint('Response body: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('Error sending notification token to server: $e');
     }
+  }
+
+  Future<void> _checkLoginStatusAndNavigate() async {
+    await Future.delayed(const Duration(seconds: 2)); // Show splash for 2 seconds
+
+    if (!mounted) return;
 
     final prefs = await SharedPreferences.getInstance();
     final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
     final hasUploadedLicenses = prefs.getBool('hasUploadedLicenses') ?? false;
 
-    if (mounted) {
-      if (isLoggedIn) {
-        if (hasUploadedLicenses) {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (context) => const Bot()),
-          );
-        } else {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (context) => KycSplashScreen()),
-          );
-        }
+    // Generate FCM token (only if logged in)
+    if (isLoggedIn) {
+      await _generateAndStoreFCMToken();
+    }
+
+    // Load categories
+    try {
+      debugPrint('SplashScreen: Loading categories...');
+      await ProductService.loadCategoriesFromApi();
+    } catch (e) {
+      debugPrint('Failed to load data: $e');
+    }
+
+    if (!mounted) return;
+
+    // Navigate based on login status
+    if (isLoggedIn) {
+      if (hasUploadedLicenses) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const Bot()),
+        );
       } else {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (context) => const secondscreen()),
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => KycSplashScreen()),
         );
       }
+    } else {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const secondscreen()),
+      );
     }
   }
 
   // ================= LOCATION + DEVICE ID =================
-
   Future<void> _storeLocationAndDeviceId() async {
     final prefs = await SharedPreferences.getInstance();
 
-    // -------- LOCATION --------
     try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return;
-
-      LocationPermission permission = await Geolocator.checkPermission();
-
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        return;
-      }
-
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 10),
       );
 
       await prefs.setDouble('latitude', position.latitude);
       await prefs.setDouble('longitude', position.longitude);
 
-      debugPrint('Location saved: ${position.latitude}, ${position.longitude}');
+      debugPrint("📍 Location fetched successfully: ${position.latitude}, ${position.longitude}");
     } catch (e) {
-      debugPrint('Location error: $e');
+      debugPrint("Location error: $e");
+      await prefs.setDouble('latitude', 0.0);
+      await prefs.setDouble('longitude', 0.0);
     }
 
     // -------- DEVICE ID --------
@@ -154,8 +265,7 @@ class _splashscreenState extends State<splashscreen> {
       }
 
       await prefs.setString('device_id', deviceId);
-
-      debugPrint('Device ID saved: $deviceId');
+      debugPrint("📱 Device ID fetched: $deviceId");
     } catch (e) {
       debugPrint('Device ID error: $e');
     }

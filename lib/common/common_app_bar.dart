@@ -4,38 +4,14 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:kisangro/home/myorder.dart';
 import 'package:kisangro/menu/wishlist.dart';
-import 'package:kisangro/home/noti.dart';
+import 'package:kisangro/home/noti.dart'; // Import the noti.dart which contains NotificationProvider
 import 'package:kisangro/home/bottom.dart';
 import 'package:kisangro/home/theme_mode_provider.dart';
 import 'package:kisangro/models/cart_model.dart';
 import 'package:kisangro/models/wishlist_model.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-// Notification Provider to manage unread notifications state globally
-class NotificationProvider with ChangeNotifier {
-  bool _hasUnreadNotifications = false;
-
-  bool get hasUnreadNotifications => _hasUnreadNotifications;
-
-  void setUnreadNotifications(bool value) {
-    _hasUnreadNotifications = value;
-    notifyListeners();
-    saveNotificationState();
-  }
-
-  // Load notification state from SharedPreferences
-  Future<void> loadNotificationState() async {
-    final prefs = await SharedPreferences.getInstance();
-    _hasUnreadNotifications = prefs.getBool('hasUnreadNotifications') ?? false;
-    notifyListeners();
-  }
-
-  // Save notification state to SharedPreferences
-  Future<void> saveNotificationState() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('hasUnreadNotifications', _hasUnreadNotifications);
-  }
-}
+// REMOVE the duplicate NotificationProvider class from here
+// It's now imported from noti.dart
 
 class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;

@@ -228,9 +228,9 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
       Map<String, String> body = {
         'cid': '85788578',
-        'ln': longitude?.toString() ?? '',
-        'lt': latitude?.toString() ?? '',
-        'device_id': deviceId ?? '',
+        'ln': longitude?.toString() ?? '1',
+        'lt': latitude?.toString() ?? '1',
+        'device_id': deviceId ?? '1',
         'name': _nameController.text,
         'mobile': _enteredPhoneNumber,
         'email': _emailController.text,

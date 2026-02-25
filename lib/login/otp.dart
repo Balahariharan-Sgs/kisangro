@@ -13,6 +13,7 @@ import 'package:kisangro/home/bottom.dart';
 import 'package:provider/provider.dart';
 import '../home/theme_mode_provider.dart';
 import 'package:sms_autofill/sms_autofill.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 class OtpScreen extends StatefulWidget {
   final String phoneNumber;
@@ -43,29 +44,128 @@ class _OtpScreenState extends State<OtpScreen> {
     startTimer();
     _initSmsAutofill();
     _loadAppSignature();
+    _generateFCMToken(); // Generate FCM token early
   }
 
   void _onOtpChanged() {
     if (_isDisposed) return;
-    
+
     setState(() {
       isOtpFilled = otpController.text.length == 6;
     });
   }
 
+  // ================= FCM TOKEN GENERATION =================
+  Future<void> _generateFCMToken() async {
+    try {
+      FirebaseMessaging messaging = FirebaseMessaging.instance;
+
+      // Request permission (Android 13+ safety)
+      await messaging.requestPermission();
+
+      String? token = await messaging.getToken();
+
+      if (token != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('fcm_token', token);
+        debugPrint("🔥 FCM Token generated and saved: $token");
+      }
+    } catch (e) {
+      debugPrint("FCM Token generation error: $e");
+    }
+  }
+
+  // ================= SEND NOTIFICATION TOKEN TO SERVER =================
+  Future<void> _sendNotificationTokenToServer(int customerId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      // Get all required data from SharedPreferences
+      String? fcmToken = prefs.getString('fcm_token');
+      double? latitude = prefs.getDouble('latitude');
+      double? longitude = prefs.getDouble('longitude');
+      String? deviceId = prefs.getString('device_id');
+
+      // Validate required data
+      if (fcmToken == null || fcmToken.isEmpty) {
+        debugPrint('FCM Token not available, generating now...');
+        await _generateFCMToken();
+        fcmToken = prefs.getString('fcm_token');
+        
+        if (fcmToken == null || fcmToken.isEmpty) {
+          debugPrint('Still unable to get FCM token');
+          return;
+        }
+      }
+
+      // Prepare the API URL
+      final String apiUrl = 'https://erpsmart.in/total/api/m_api/';
+      
+      // Prepare parameters
+      final Map<String, String> params = {
+        'cid': '85788578',
+        'type': '1030',
+        'ln': longitude?.toString() ?? '1', // Note: API uses ln for longitude
+        'lt': latitude?.toString() ?? '1',  // Note: API uses lt for latitude
+        'device_id': deviceId ?? '12345',
+        'cus_id': customerId.toString(),
+        'fcm_token': fcmToken,
+      };
+
+      debugPrint('Sending notification token to server with params: $params');
+
+      // Make the API call (fire and forget - don't await to not block navigation)
+      http.post(
+        Uri.parse(apiUrl),
+        body: params,
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          debugPrint('Notification API timeout');
+          return http.Response('Timeout', 408);
+        },
+      ).then((response) {
+        if (response.statusCode == 200) {
+          try {
+            final responseData = json.decode(response.body);
+            debugPrint('Notification API response: $responseData');
+            
+            if (responseData['error'] == false || 
+                responseData['status'] == 'success' || 
+                responseData['success'] == true) {
+              debugPrint('✅ FCM token successfully registered on server');
+              prefs.setBool('fcm_token_synced', true);
+            } else {
+              debugPrint('⚠️ Server returned non-success status: $responseData');
+            }
+          } catch (e) {
+            debugPrint('Error parsing notification API response: $e');
+          }
+        } else {
+          debugPrint('❌ Failed to send FCM token. Status: ${response.statusCode}');
+        }
+      }).catchError((e) {
+        debugPrint('Error sending notification token to server: $e');
+      });
+
+    } catch (e) {
+      debugPrint('Error in _sendNotificationTokenToServer: $e');
+    }
+  }
+
   Future<void> _initSmsAutofill() async {
     try {
       debugPrint('Initializing SMS autofill...');
-      
+
       // Get app signature first
       final signature = await SmsAutoFill().getAppSignature;
       debugPrint('App Signature: $signature');
-      
+
       // Start listening for SMS
       await SmsAutoFill().listenForCode();
       debugPrint('SMS listening started');
-      
-      // Alternative approach: Subscribe to SMS code stream
+
+      // Subscribe to SMS code stream
       _smsSubscription = SmsAutoFill().code.listen((code) {
         debugPrint('Received SMS code: $code');
         if (code != null && code.length == 6 && !_isDisposed && mounted) {
@@ -80,13 +180,16 @@ class _OtpScreenState extends State<OtpScreen> {
           });
         }
       });
-      
+
       // Also try to get the code immediately if already available
       final existingCode = await SmsAutoFill().getAppSignature.then((_) {
         return SmsAutoFill().code;
       });
-      
-      if (existingCode != null && existingCode.length == 6 && !_isDisposed && mounted) {
+
+      if (existingCode != null &&
+          existingCode.length == 6 &&
+          !_isDisposed &&
+          mounted) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!_isDisposed && mounted) {
             setState(() {
@@ -99,46 +202,16 @@ class _OtpScreenState extends State<OtpScreen> {
       }
     } catch (e) {
       debugPrint('SMS Autofill initialization error: $e');
-      // Fallback: Try alternative method
-     // _tryAlternativeSmsMethod();
     }
   }
 
-  // void _tryAlternativeSmsMethod() {
-  //   try {
-  //     debugPrint('Trying alternative SMS method...');
-      
-  //     // Alternative 1: Direct code reading
-  //     SmsAutoFill().getAppSignature.then((signature) {
-  //       debugPrint('Alternative method - App Signature: $signature');
-        
-  //       // Try to get code using alternative approach
-  //       SmsAutoFill().code.then((code) {
-  //         if (code != null && code.length == 6 && !_isDisposed && mounted) {
-  //           WidgetsBinding.instance.addPostFrameCallback((_) {
-  //             if (!_isDisposed && mounted) {
-  //               setState(() {
-  //                 otpController.text = code;
-  //                 isOtpFilled = true;
-  //               });
-  //               debugPrint('Alternative method - Auto-filled OTP: $code');
-  //             }
-  //           });
-  //         }
-  //       });
-  //     });
-  //   } catch (e) {
-  //     debugPrint('Alternative SMS method also failed: $e');
-  //   }
-  // }
-
   Future<void> _loadAppSignature() async {
     if (_isDisposed) return;
-    
+
     try {
       final signature = await _getLiveAppSignature();
       if (_isDisposed) return;
-      
+
       setState(() {
         _appSignature = signature;
       });
@@ -161,7 +234,7 @@ class _OtpScreenState extends State<OtpScreen> {
 
   void startTimer() {
     if (_isDisposed) return;
-    
+
     setState(() {
       _start = 30;
       canResend = false;
@@ -173,7 +246,7 @@ class _OtpScreenState extends State<OtpScreen> {
         timer.cancel();
         return;
       }
-      
+
       if (_start == 0) {
         if (!_isDisposed) {
           setState(() {
@@ -193,13 +266,15 @@ class _OtpScreenState extends State<OtpScreen> {
 
   Future<void> _verifyOtp() async {
     if (_isDisposed) return;
-    
+
     if (!isOtpFilled) {
       if (!_isDisposed && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Please enter the complete OTP.',
-                style: GoogleFonts.poppins()),
+            content: Text(
+              'Please enter the complete OTP.',
+              style: GoogleFonts.poppins(),
+            ),
           ),
         );
       }
@@ -212,7 +287,7 @@ class _OtpScreenState extends State<OtpScreen> {
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      
+
       double? latitude = prefs.getDouble('latitude');
       double? longitude = prefs.getDouble('longitude');
       String? deviceId = prefs.getString('device_id');
@@ -231,13 +306,15 @@ class _OtpScreenState extends State<OtpScreen> {
 
       debugPrint("OTP Verification API BODY: $body");
 
-      final response = await http.post(
-        url,
-        headers: <String, String>{
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: body,
-      ).timeout(const Duration(seconds: 10));
+      final response = await http
+          .post(
+            url,
+            headers: <String, String>{
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: body,
+          )
+          .timeout(const Duration(seconds: 10));
 
       if (_isDisposed) return;
 
@@ -248,21 +325,33 @@ class _OtpScreenState extends State<OtpScreen> {
         if (responseData['error'] == false) {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setBool('isLoggedIn', true);
+          await prefs.setString('mobile_number', widget.phoneNumber);
+
+          debugPrint('Stored mobile number: ${widget.phoneNumber}');
 
           try {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               try {
                 if (!_isDisposed && mounted) {
-                  final kycBusinessDataProvider = Provider.of<KycBusinessDataProvider>(context, listen: false);
-                  final kycImageProvider = Provider.of<KycImageProvider>(context, listen: false);
-                  
+                  final kycBusinessDataProvider =
+                      Provider.of<KycBusinessDataProvider>(
+                        context,
+                        listen: false,
+                      );
+                  final kycImageProvider = Provider.of<KycImageProvider>(
+                    context,
+                    listen: false,
+                  );
+
                   kycBusinessDataProvider.clearKycData();
                   kycImageProvider.clearKycImage();
-                  
+
                   debugPrint('Cleared existing KYC data for new user login');
                 }
               } catch (e) {
-                debugPrint('Error clearing KYC data: $e. This is normal if providers are not initialized yet.');
+                debugPrint(
+                  'Error clearing KYC data: $e. This is normal if providers are not initialized yet.',
+                );
               }
             });
           } catch (e) {
@@ -276,13 +365,19 @@ class _OtpScreenState extends State<OtpScreen> {
             if (cusId != null) {
               await prefs.setInt('cus_id', cusId);
               debugPrint('Stored cus_id: $cusId');
+              
+              // ===== SEND NOTIFICATION TOKEN TO SERVER AFTER LOGIN =====
+              // Call this after successful login and storing cus_id
+              _sendNotificationTokenToServer(cusId);
             }
 
             if (!_isDisposed && mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text(responseData['error_msg'] ?? 'OTP verified successfully!',
-                      style: GoogleFonts.poppins()),
+                  content: Text(
+                    responseData['error_msg'] ?? 'OTP verified successfully!',
+                    style: GoogleFonts.poppins(),
+                  ),
                 ),
               );
 
@@ -296,8 +391,10 @@ class _OtpScreenState extends State<OtpScreen> {
             if (!_isDisposed && mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('User data missing. Proceeding to KYC.',
-                      style: GoogleFonts.poppins()),
+                  content: Text(
+                    'User data missing. Proceeding to KYC.',
+                    style: GoogleFonts.poppins(),
+                  ),
                 ),
               );
               Navigator.pushReplacement(
@@ -310,8 +407,10 @@ class _OtpScreenState extends State<OtpScreen> {
           if (!_isDisposed && mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text(responseData['error_msg'] ?? 'Invalid OTP. Please try again.',
-                    style: GoogleFonts.poppins()),
+                content: Text(
+                  responseData['error_msg'] ?? 'Invalid OTP. Please try again.',
+                  style: GoogleFonts.poppins(),
+                ),
               ),
             );
           }
@@ -327,8 +426,10 @@ class _OtpScreenState extends State<OtpScreen> {
         if (!_isDisposed && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Failed to verify OTP. Status Code: ${response.statusCode}',
-                  style: GoogleFonts.poppins()),
+              content: Text(
+                'Failed to verify OTP. Status Code: ${response.statusCode}',
+                style: GoogleFonts.poppins(),
+              ),
             ),
           );
         }
@@ -337,8 +438,10 @@ class _OtpScreenState extends State<OtpScreen> {
       if (!_isDisposed && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Network Error: $e. Please check your internet connection.',
-                style: GoogleFonts.poppins()),
+            content: Text(
+              'Network Error: $e. Please check your internet connection.',
+              style: GoogleFonts.poppins(),
+            ),
           ),
         );
       }
@@ -358,7 +461,7 @@ class _OtpScreenState extends State<OtpScreen> {
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      
+
       double? latitude = prefs.getDouble('latitude');
       double? longitude = prefs.getDouble('longitude');
       String? deviceId = prefs.getString('device_id');
@@ -368,8 +471,8 @@ class _OtpScreenState extends State<OtpScreen> {
       Map<String, String> body = {
         'cid': '85788578',
         'type': '1002',
-        'lt': latitude?.toString() ?? '',
-        'ln': longitude?.toString() ?? '',
+        'lt': latitude?.toString() ?? '1',
+        'ln': longitude?.toString() ?? '1',
         'device_id': deviceId ?? '',
         'mobile': widget.phoneNumber,
         'app_signature': _appSignature,
@@ -377,13 +480,15 @@ class _OtpScreenState extends State<OtpScreen> {
 
       debugPrint("RESEND OTP API BODY: $body");
 
-      final response = await http.post(
-        url,
-        headers: <String, String>{
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: body,
-      ).timeout(const Duration(seconds: 10));
+      final response = await http
+          .post(
+            url,
+            headers: <String, String>{
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: body,
+          )
+          .timeout(const Duration(seconds: 10));
 
       if (_isDisposed) return;
 
@@ -421,8 +526,10 @@ class _OtpScreenState extends State<OtpScreen> {
         if (!_isDisposed && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Server error. Please try again.',
-                  style: GoogleFonts.poppins()),
+              content: Text(
+                'Server error. Please try again.',
+                style: GoogleFonts.poppins(),
+              ),
             ),
           );
         }
@@ -431,8 +538,7 @@ class _OtpScreenState extends State<OtpScreen> {
       if (!_isDisposed && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Network error: $e',
-                style: GoogleFonts.poppins()),
+            content: Text('Network error: $e', style: GoogleFonts.poppins()),
           ),
         );
       }
@@ -446,13 +552,13 @@ class _OtpScreenState extends State<OtpScreen> {
     _smsSubscription?.cancel();
     otpController.removeListener(_onOtpChanged);
     otpController.dispose();
-    
+
     try {
       SmsAutoFill().unregisterListener();
     } catch (e) {
       debugPrint('Error during SMS autofill dispose: $e');
     }
-    
+
     super.dispose();
   }
 
@@ -461,12 +567,16 @@ class _OtpScreenState extends State<OtpScreen> {
     final themeMode = Provider.of<ThemeModeProvider>(context).themeMode;
     final isDarkMode = themeMode == ThemeMode.dark;
 
-    final Color gradientStartColor = isDarkMode ? Colors.black : const Color(0xffFFD9BD);
-    final Color gradientEndColor = isDarkMode ? Colors.black : const Color(0xffFFFFFF);
+    final Color gradientStartColor =
+        isDarkMode ? Colors.black : const Color(0xffFFD9BD);
+    final Color gradientEndColor =
+        isDarkMode ? Colors.black : const Color(0xffFFFFFF);
     final Color backButtonColor = isDarkMode ? Colors.white : Colors.black87;
     final Color textColor = isDarkMode ? Colors.white : Colors.black;
-    final Color otpFieldActiveColor = isDarkMode ? Colors.white : const Color(0xffEB7720);
-    final Color otpFieldInactiveColor = isDarkMode ? Colors.grey[600]! : Colors.grey;
+    final Color otpFieldActiveColor =
+        isDarkMode ? Colors.white : const Color(0xffEB7720);
+    final Color otpFieldInactiveColor =
+        isDarkMode ? Colors.grey[600]! : Colors.grey;
     final Color timerTextColor = isDarkMode ? Colors.grey[400]! : Colors.grey;
     final Color orangeColor = const Color(0xffEB7720);
 
@@ -484,7 +594,10 @@ class _OtpScreenState extends State<OtpScreen> {
           child: Column(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 16,
+                ),
                 child: Align(
                   alignment: Alignment.topLeft,
                   child: IconButton(
@@ -503,20 +616,16 @@ class _OtpScreenState extends State<OtpScreen> {
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       const SizedBox(height: 20),
-                      Center(
-                        child: Image.asset(
-                          'assets/logo.png',
-                          height: 80,
-                        ),
-                      ),
+                      Center(child: Image.asset('assets/logo.png', height: 80)),
                       const SizedBox(height: 40),
                       Center(
                         child: Text(
                           'OTP Verification',
                           style: GoogleFonts.poppins(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: orangeColor),
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: orangeColor,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 30),
@@ -524,16 +633,22 @@ class _OtpScreenState extends State<OtpScreen> {
                         child: RichText(
                           textAlign: TextAlign.center,
                           text: TextSpan(
-                            style: GoogleFonts.poppins(fontSize: 14, color: textColor),
+                            style: GoogleFonts.poppins(
+                              fontSize: 14,
+                              color: textColor,
+                            ),
                             children: [
                               TextSpan(
                                 text:
-                                'We sent an OTP (One Time Password) to your mobile number ',
+                                    'We sent an OTP (One Time Password) to your mobile number ',
                                 style: TextStyle(color: textColor),
                               ),
                               TextSpan(
                                 text: widget.phoneNumber,
-                                style: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: textColor),
+                                style: GoogleFonts.poppins(
+                                  fontWeight: FontWeight.bold,
+                                  color: textColor,
+                                ),
                               ),
                             ],
                           ),
@@ -552,7 +667,9 @@ class _OtpScreenState extends State<OtpScreen> {
                           });
                         },
                         keyboardType: TextInputType.number,
-                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
                         pinTheme: PinTheme(
                           shape: PinCodeFieldShape.underline,
                           fieldWidth: 30,
@@ -571,24 +688,38 @@ class _OtpScreenState extends State<OtpScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text("Didn't receive OTP?", style: GoogleFonts.poppins(fontSize: 13, color: textColor)),
+                          Text(
+                            "Didn't receive OTP?",
+                            style: GoogleFonts.poppins(
+                              fontSize: 13,
+                              color: textColor,
+                            ),
+                          ),
                           canResend
                               ? GestureDetector(
-                            onTap: _resendOtp,
-                            child: Text(
-                              'Resend now',
-                              style: GoogleFonts.poppins(
-                                  color: orangeColor,
-                                  fontWeight: FontWeight.bold),
-                            ),
-                          )
+                                onTap: _resendOtp,
+                                child: Text(
+                                  'Resend now',
+                                  style: GoogleFonts.poppins(
+                                    color: orangeColor,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              )
                               : Text(
-                            '0:${_start.toString().padLeft(2, '0')}',
-                            style: GoogleFonts.poppins(color: timerTextColor),
-                          ),
+                                '0:${_start.toString().padLeft(2, '0')}',
+                                style: GoogleFonts.poppins(
+                                  color: timerTextColor,
+                                ),
+                              ),
                         ],
                       ),
-                      SizedBox(height: MediaQuery.of(context).viewInsets.bottom > 0 ? 40 : 20),
+                      SizedBox(
+                        height:
+                            MediaQuery.of(context).viewInsets.bottom > 0
+                                ? 40
+                                : 20,
+                      ),
                     ],
                   ),
                 ),
@@ -599,7 +730,10 @@ class _OtpScreenState extends State<OtpScreen> {
                   left: 24.0,
                   right: 24.0,
                   top: 16.0,
-                  bottom: MediaQuery.of(context).viewInsets.bottom > 0 ? 16.0 : 30.0,
+                  bottom:
+                      MediaQuery.of(context).viewInsets.bottom > 0
+                          ? 16.0
+                          : 30.0,
                 ),
                 child: ElevatedButton(
                   onPressed: (isOtpFilled && !_isVerifying) ? _verifyOtp : null,
@@ -610,12 +744,13 @@ class _OtpScreenState extends State<OtpScreen> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  child: _isVerifying
-                      ? const CircularProgressIndicator(color: Colors.white)
-                      : Text(
-                    'Verify & Proceed',
-                    style: GoogleFonts.poppins(color: Colors.white),
-                  ),
+                  child:
+                      _isVerifying
+                          ? const CircularProgressIndicator(color: Colors.white)
+                          : Text(
+                            'Verify & Proceed',
+                            style: GoogleFonts.poppins(color: Colors.white),
+                          ),
                 ),
               ),
             ],

@@ -948,7 +948,7 @@ class OrderCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Order Date: ${DateFormat('dd MMMyyyy, hh:mm a').format(order.orderDate)}',
+              'Order Date: ${DateFormat('dd MMMyyyy,').format(order.orderDate)}',
               style: GoogleFonts.poppins(color: greyTextColor), // Apply theme color
             ),
             // This is a single widget (Padding) so it can be directly in the Column's children list.
@@ -1107,38 +1107,38 @@ class OrderCard extends StatelessWidget {
                             ),
                           ),
                       // Conditional spacing between buttons
-                      if (showCancelButton && showModifyOrderButton)
-                        const SizedBox(width: 12),
-                      if (showModifyOrderButton)
-                        Expanded(
-                          child: SizedBox(
-                            height: 40,
-                            // MODIFIED: Changed to ElevatedButton for filled highlight
-                            child: ElevatedButton.icon(
-                              onPressed: () {
-                                // MODIFIED: Call the new method to ADD products to cart
-                                Provider.of<CartModel>(context, listen: false).addProductsFromOrder(order.products);
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(builder: (context) => const Cart()),
-                                );
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Order ${order.id} loaded to cart for modification!', style: GoogleFonts.poppins())),
-                                );
-                              },
-                              style: ElevatedButton.styleFrom(
-                                // MODIFIED: Darker orange color for fill
-                                backgroundColor: const Color(0xFFE65100), // Always darker orange
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
-                              ),
-                              icon: const Icon(Icons.edit, color: Colors.white, size: 16), // Icon color to white for better contrast
-                              label: Text(
-                                'Modify',
-                                style: GoogleFonts.poppins(color: Colors.white), // Text color to white for better contrast
-                              ),
-                            ),
-                          ),
-                        ),
+                      // if (showCancelButton && showModifyOrderButton)
+                      //   const SizedBox(width: 12),
+                      // if (showModifyOrderButton)
+                      //   Expanded(
+                      //     child: SizedBox(
+                      //       height: 40,
+                      //       // MODIFIED: Changed to ElevatedButton for filled highlight
+                      //       child: ElevatedButton.icon(
+                      //         onPressed: () {
+                      //           // MODIFIED: Call the new method to ADD products to cart
+                      //           Provider.of<CartModel>(context, listen: false).addProductsFromOrder(order.products);
+                      //           Navigator.push(
+                      //             context,
+                      //             MaterialPageRoute(builder: (context) => const Cart()),
+                      //           );
+                      //           ScaffoldMessenger.of(context).showSnackBar(
+                      //             SnackBar(content: Text('Order ${order.id} loaded to cart for modification!', style: GoogleFonts.poppins())),
+                      //           );
+                      //         },
+                      //         style: ElevatedButton.styleFrom(
+                      //           // MODIFIED: Darker orange color for fill
+                      //           backgroundColor: const Color(0xFFE65100), // Always darker orange
+                      //           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
+                      //         ),
+                      //         icon: const Icon(Icons.edit, color: Colors.white, size: 16), // Icon color to white for better contrast
+                      //         label: Text(
+                      //           'Modify',
+                      //           style: GoogleFonts.poppins(color: Colors.white), // Text color to white for better contrast
+                      //         ),
+                      //       ),
+                      //     ),
+                      //   ),
                     ],
                   ),
                   // Conditional spacing after this row of buttons, if other button rows follow
