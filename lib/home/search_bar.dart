@@ -9,6 +9,29 @@ import 'package:kisangro/models/wishlist_model.dart';
 import 'dart:async';
 import 'package:collection/collection.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+
+// API Suggestion Model
+class ApiSuggestion {
+  final String label;
+  final int productId;
+  final String name;
+
+  ApiSuggestion({
+    required this.label,
+    required this.productId,
+    required this.name,
+  });
+
+  factory ApiSuggestion.fromJson(Map<String, dynamic> json) {
+    return ApiSuggestion(
+      label: json['label']?.toString() ?? '',
+      productId: json['product_id'] ?? 0,
+      name: json['name']?.toString() ?? '',
+    );
+  }
+}
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -20,15 +43,19 @@ class SearchScreen extends StatefulWidget {
 class _SearchScreenState extends State<SearchScreen> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
+  final LayerLink _layerLink = LayerLink(); // Add LayerLink for overlay positioning
 
   List<Product> _recentSearches = [];
   List<Product> _trendingSearches = [];
   bool _isSearching = false;
-  List<Product> _searchSuggestions = [];
+  List<ApiSuggestion> _apiSuggestions = [];
+  List<Map<String, dynamic>> _suggestionItems = [];
   OverlayEntry? _overlayEntry;
   bool _showSuggestions = false;
-  final List<String> _recentSearchQueries = [];
   static const String RECENT_SEARCHES_KEY = 'recent_searches';
+  
+  // API suggestion debounce timer
+  Timer? _suggestionDebounce;
 
   @override
   void initState() {
@@ -43,13 +70,16 @@ class _SearchScreenState extends State<SearchScreen> {
     _searchController.dispose();
     _searchFocusNode.removeListener(_onFocusChange);
     _searchFocusNode.dispose();
+    _suggestionDebounce?.cancel();
     _removeOverlay();
     super.dispose();
   }
 
   void _onFocusChange() {
-    if (_searchFocusNode.hasFocus && _searchController.text.isNotEmpty) {
-      _showSuggestionsOverlay();
+    if (_searchFocusNode.hasFocus) {
+      if (_searchController.text.isNotEmpty && _suggestionItems.isNotEmpty) {
+        _showSuggestionsOverlay();
+      }
     } else {
       _removeOverlay();
     }
@@ -57,100 +87,194 @@ class _SearchScreenState extends State<SearchScreen> {
 
   void _onSearchChanged() {
     if (_searchController.text.isEmpty) {
+      setState(() {
+        _apiSuggestions = [];
+        _suggestionItems = [];
+      });
       _removeOverlay();
       return;
     }
 
-    _performSearchSuggestions(_searchController.text);
-
+    // Show loading state in overlay
     if (_searchFocusNode.hasFocus) {
+      setState(() {
+        _suggestionItems = [{'type': 'loading', 'text': 'Searching...'}];
+      });
       _showSuggestionsOverlay();
+    }
+
+    // Debounce API calls to avoid too many requests
+    if (_suggestionDebounce?.isActive ?? false) _suggestionDebounce!.cancel();
+    _suggestionDebounce = Timer(const Duration(milliseconds: 300), () {
+      _fetchApiSuggestions(_searchController.text);
+    });
+  }
+
+  // Fetch suggestions from API using type 1039
+  Future<void> _fetchApiSuggestions(String query) async {
+    if (query.isEmpty) return;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      // Get location and device data
+      double? latitude = prefs.getDouble('latitude') ?? 123.0;
+      double? longitude = prefs.getDouble('longitude') ?? 145.0;
+      String? deviceId = prefs.getString('device_id') ?? '1';
+
+      // Prepare API parameters
+      final Map<String, String> params = {
+        'cid': '85788578',
+        'type': '1039',
+        'lt': latitude.toString(),
+        'ln': longitude.toString(),
+        'device_id': deviceId,
+        'search': query,
+      };
+
+      debugPrint('🔍 Fetching search suggestions: $query');
+
+      final response = await http.post(
+        Uri.parse('https://erpsmart.in/total/api/m_api/'),
+        body: params,
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final List<dynamic> responseData = json.decode(response.body);
+        
+        if (responseData is List) {
+          final apiSuggestions = responseData
+              .map((item) => ApiSuggestion.fromJson(item))
+              .toList();
+          
+          debugPrint('🔍 Found ${apiSuggestions.length} suggestions');
+          
+          // Create suggestion items for display
+          final suggestionItems = <Map<String, dynamic>>[];
+          
+          // Add search query as first suggestion
+          suggestionItems.add({
+            'type': 'search',
+            'text': query,
+            'product': null,
+          });
+          
+          // Add API suggestions
+          final allProducts = ProductService.getAllProducts();
+          for (final apiSuggestion in apiSuggestions) {
+            // Try to find matching product for image
+            Product? matchedProduct;
+            try {
+              matchedProduct = allProducts.firstWhereOrNull(
+                (p) => p.mainProductId == apiSuggestion.productId.toString() ||
+                       p.title.toLowerCase().contains(apiSuggestion.name.toLowerCase())
+              );
+            } catch (e) {
+              debugPrint('Error matching product: $e');
+            }
+            
+            suggestionItems.add({
+              'type': 'product',
+              'text': apiSuggestion.name,
+              'productId': apiSuggestion.productId,
+              'product': matchedProduct,
+            });
+          }
+          
+          if (mounted) {
+            setState(() {
+              _apiSuggestions = apiSuggestions;
+              _suggestionItems = suggestionItems;
+            });
+
+            // Update overlay
+            if (_searchFocusNode.hasFocus) {
+              _showSuggestionsOverlay();
+            }
+          }
+        }
+      } else {
+        debugPrint('🔍 API error: ${response.statusCode}');
+        _performLocalSearchSuggestions(query);
+      }
+    } catch (e) {
+      debugPrint('🔍 Error fetching suggestions: $e');
+      _performLocalSearchSuggestions(query);
+    }
+  }
+
+  void _performLocalSearchSuggestions(String query) {
+    try {
+      List<Product> results = ProductService.searchProductsLocally(query);
+      
+      final suggestionItems = <Map<String, dynamic>>[];
+      
+      // Add search query as first suggestion
+      suggestionItems.add({
+        'type': 'search',
+        'text': query,
+        'product': null,
+      });
+      
+      // Add product suggestions
+      for (final product in results.take(10)) {
+        suggestionItems.add({
+          'type': 'product',
+          'text': product.title,
+          'product': product,
+        });
+      }
+      
+      if (mounted) {
+        setState(() {
+          _suggestionItems = suggestionItems;
+        });
+
+        if (_searchFocusNode.hasFocus) {
+          _showSuggestionsOverlay();
+        }
+      }
+    } catch (e) {
+      debugPrint('Local search suggestions error: $e');
     }
   }
 
   void _showSuggestionsOverlay() {
+    // Don't show overlay if no items or already showing
+    if (_suggestionItems.isEmpty) return;
+    
+    // Remove existing overlay
     _removeOverlay();
-
-    final renderBox = context.findRenderObject() as RenderBox;
-    final size = renderBox.size;
-    final offset = renderBox.localToGlobal(Offset.zero);
 
     _overlayEntry = OverlayEntry(
       builder: (context) => Positioned(
-        left: offset.dx,
-        top: offset.dy + size.height + 5,
-        width: size.width,
-        child: Material(
-          elevation: 4.0,
-          child: Container(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.4,
-            ),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(8.0),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black12,
-                  blurRadius: 4.0,
-                ),
-              ],
-            ),
-            child: _searchSuggestions.isEmpty
-                ? Padding(
-              padding: EdgeInsets.all(16.0),
-              child: Text(
-                'No suggestions found',
-                style: GoogleFonts.poppins(),
+        width: MediaQuery.of(context).size.width - 32, // Match search bar width with padding
+        child: CompositedTransformFollower(
+          link: _layerLink,
+          showWhenUnlinked: false,
+          offset: const Offset(0, 50), // Position below the search bar
+          child: Material(
+            elevation: 8.0,
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.5,
               ),
-            )
-                : ListView.builder(
-              padding: EdgeInsets.zero,
-              shrinkWrap: true,
-              itemCount: _searchSuggestions.length,
-              itemBuilder: (context, index) {
-                final product = _searchSuggestions[index];
-                return ListTile(
-                  leading: SizedBox(
-                    width: 40,
-                    height: 40,
-                    child: AspectRatio(
-                      aspectRatio: 1.0,
-                      child: _getEffectiveImageUrl(product.imageUrl).startsWith('http')
-                          ? Image.network(
-                        _getEffectiveImageUrl(product.imageUrl),
-                        fit: BoxFit.contain,
-                        errorBuilder: (context, error, stackTrace) => Image.asset(
-                          'assets/placeholder.png',
-                          fit: BoxFit.contain,
-                        ),
-                      )
-                          : Image.asset(
-                        _getEffectiveImageUrl(product.imageUrl),
-                        fit: BoxFit.contain,
-                      ),
-                    ),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.black26,
+                    blurRadius: 8,
+                    offset: Offset(0, 2),
                   ),
-                  title: Text(
-                    product.title,
-                    style: GoogleFonts.poppins(),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Text(
-                    product.subtitle,
-                    style: GoogleFonts.poppins(fontSize: 12),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  onTap: () {
-                    _searchController.text = product.title;
-                    _saveRecentSearch(product.title);
-                    _navigateToSearchResults(product.title);
-                    _removeOverlay();
-                  },
-                );
-              },
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: _buildSuggestionsList(),
+              ),
             ),
           ),
         ),
@@ -161,6 +285,127 @@ class _SearchScreenState extends State<SearchScreen> {
     setState(() {
       _showSuggestions = true;
     });
+  }
+
+  Widget _buildSuggestionsList() {
+    if (_suggestionItems.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(16.0),
+        child: Center(
+          child: Text('No suggestions found'),
+        ),
+      );
+    }
+
+    return ListView.separated(
+      padding: EdgeInsets.zero,
+      shrinkWrap: true,
+      itemCount: _suggestionItems.length,
+      separatorBuilder: (context, index) => const Divider(height: 1, thickness: 1),
+      itemBuilder: (context, index) {
+        final item = _suggestionItems[index];
+        final type = item['type'];
+        
+        if (type == 'loading') {
+          return const Padding(
+            padding: EdgeInsets.all(16.0),
+            child: Center(
+              child: CircularProgressIndicator(color: Color(0xffEB7720)),
+            ),
+          );
+        } else if (type == 'search') {
+          return _buildSearchSuggestionTile(item['text']);
+        } else {
+          return _buildProductSuggestionTile(
+            item['text'], 
+            item['product'],
+            item.containsKey('productId') ? item['productId'] : null,
+          );
+        }
+      },
+    );
+  }
+
+  Widget _buildSearchSuggestionTile(String query) {
+    return ListTile(
+      leading: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: const Color(0xffEB7720).withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Icon(Icons.search, color: Color(0xffEB7720), size: 20),
+      ),
+      title: Text(
+        query,
+        style: GoogleFonts.poppins(
+          fontWeight: FontWeight.w500,
+          fontSize: 14,
+        ),
+      ),
+      subtitle: Text(
+        'Search for products',
+        style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey),
+      ),
+      onTap: () {
+        _searchController.text = query;
+        _saveRecentSearch(query);
+        _navigateToSearchResults(query);
+        _removeOverlay();
+      },
+    );
+  }
+
+  Widget _buildProductSuggestionTile(String text, Product? product, int? productId) {
+    return ListTile(
+      leading: Container(
+        width: 40,
+        height: 40,
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: Colors.grey[100],
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: product != null && product.imageUrl.isNotEmpty
+            ? (_getEffectiveImageUrl(product.imageUrl).startsWith('http')
+                ? Image.network(
+                    _getEffectiveImageUrl(product.imageUrl),
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) => Image.asset(
+                      'assets/placeholder.png',
+                      fit: BoxFit.contain,
+                    ),
+                  )
+                : Image.asset(
+                    _getEffectiveImageUrl(product.imageUrl),
+                    fit: BoxFit.contain,
+                  ))
+            : Image.asset(
+                'assets/placeholder.png',
+                fit: BoxFit.contain,
+              ),
+      ),
+      title: Text(
+        text,
+        style: GoogleFonts.poppins(
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Text(
+        'Product',
+        style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey),
+      ),
+      trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
+      onTap: () {
+        _searchController.text = text;
+        _saveRecentSearch(text);
+        _navigateToSearchResults(text);
+        _removeOverlay();
+      },
+    );
   }
 
   void _removeOverlay() {
@@ -179,11 +424,8 @@ class _SearchScreenState extends State<SearchScreen> {
     final prefs = await SharedPreferences.getInstance();
     List<String> searches = prefs.getStringList(RECENT_SEARCHES_KEY) ?? [];
     
-    // Remove if already exists
     searches.remove(query);
-    // Add to beginning
     searches.insert(0, query);
-    // Keep only last 10 searches
     if (searches.length > 10) {
       searches = searches.sublist(0, 10);
     }
@@ -192,78 +434,74 @@ class _SearchScreenState extends State<SearchScreen> {
     _loadRecentSearchProducts();
   }
 
-Future<void> _loadRecentSearchProducts() async {
-  try {
-    final prefs = await SharedPreferences.getInstance();
-    final recentQueries = prefs.getStringList(RECENT_SEARCHES_KEY) ?? [];
-    
-    if (recentQueries.isEmpty) {
+  Future<void> _loadRecentSearchProducts() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final recentQueries = prefs.getStringList(RECENT_SEARCHES_KEY) ?? [];
+      
+      if (recentQueries.isEmpty) {
+        if (mounted) {
+          setState(() {
+            _recentSearches = [];
+          });
+        }
+        return;
+      }
+      
+      final allProducts = ProductService.getAllProducts();
+      final recentProducts = <Product>[];
+      final validQueries = <String>[];
+      
+      for (final query in recentQueries) {
+        try {
+          Product? matchedProduct;
+          
+          for (final product in allProducts) {
+            if (product.title.toLowerCase() == query.toLowerCase()) {
+              matchedProduct = product;
+              break;
+            }
+          }
+          
+          if (matchedProduct == null) {
+            for (final product in allProducts) {
+              if (product.title.toLowerCase().contains(query.toLowerCase())) {
+                matchedProduct = product;
+                break;
+              }
+            }
+          }
+          
+          if (matchedProduct != null) {
+            if (!recentProducts.any((p) => p.title == matchedProduct!.title)) {
+              recentProducts.add(matchedProduct!);
+              validQueries.add(query);
+            }
+          }
+        } catch (e) {
+          debugPrint('Error processing query "$query": $e');
+          continue;
+        }
+      }
+      
+      if (validQueries.length != recentQueries.length) {
+        await prefs.setStringList(RECENT_SEARCHES_KEY, validQueries);
+      }
+      
+      if (mounted) {
+        setState(() {
+          _recentSearches = recentProducts.take(5).toList();
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading recent search products: $e');
       if (mounted) {
         setState(() {
           _recentSearches = [];
         });
       }
-      return;
-    }
-    
-    final allProducts = ProductService.getAllProducts();
-    final recentProducts = <Product>[];
-    final validQueries = <String>[];
-    
-    for (final query in recentQueries) {
-      try {
-        // Try to find exact match first
-        Product? matchedProduct;
-        
-        for (final product in allProducts) {
-          if (product.title.toLowerCase() == query.toLowerCase()) {
-            matchedProduct = product;
-            break;
-          }
-        }
-        
-        // If no exact match, try contains
-        if (matchedProduct == null) {
-          for (final product in allProducts) {
-            if (product.title.toLowerCase().contains(query.toLowerCase())) {
-              matchedProduct = product;
-              break;
-            }
-          }
-        }
-        
-        // If we found a match and it's not already in the list, add it
-        if (matchedProduct != null) {
-          if (!recentProducts.any((p) => p.title == matchedProduct!.title)) {
-            recentProducts.add(matchedProduct!);
-            validQueries.add(query);
-          }
-        }
-      } catch (e) {
-        debugPrint('Error processing query "$query": $e');
-        continue;
-      }
-    }
-    
-    // Update stored queries to only include valid ones
-    if (validQueries.length != recentQueries.length) {
-      await prefs.setStringList(RECENT_SEARCHES_KEY, validQueries);
-    }
-    
-    if (mounted) {
-      setState(() {
-        _recentSearches = recentProducts.take(5).toList();
-      });
-    }
-  } catch (e) {
-    debugPrint('Error loading recent search products: $e');
-    if (mounted) {
-      setState(() {
-        _recentSearches = [];
-      });
     }
   }
-}
 
   Future<void> _loadInitialData() async {
     await ProductService().initialize();
@@ -275,32 +513,6 @@ Future<void> _loadRecentSearchProducts() async {
         }
       });
       _loadRecentSearchProducts();
-    }
-  }
-
-  void _performSearchSuggestions(String query) {
-    if (query.isEmpty) {
-      setState(() {
-        _searchSuggestions = [];
-      });
-      return;
-    }
-
-    try {
-      List<Product> results = ProductService.searchProductsLocally(query);
-      setState(() {
-        _searchSuggestions = results.take(5).toList();
-      });
-
-      // Update overlay if it's visible
-      if (_showSuggestions && _overlayEntry != null) {
-        _overlayEntry!.markNeedsBuild();
-      }
-    } catch (e) {
-      setState(() {
-        _searchSuggestions = [];
-      });
-      debugPrint('Search suggestions error: $e');
     }
   }
 
@@ -351,63 +563,66 @@ Future<void> _loadRecentSearchProducts() async {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  IconButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                    },
-                    icon: const Icon(Icons.arrow_back),
-                  ),
-                  SizedBox(width: isTablet ? 12 : 8),
-                  Expanded(
-                    child: TextField(
-                      controller: _searchController,
-                      focusNode: _searchFocusNode,
-                      decoration: InputDecoration(
-                        contentPadding: EdgeInsets.symmetric(
-                            horizontal: isTablet ? 20 : 15,
-                            vertical: isTablet ? 12 : 8),
-                        hintText: 'Search by item/crop/chemical name',
-                        hintStyle: GoogleFonts.poppins(
-                            color: Colors.grey, fontSize: isTablet ? 16 : 14),
-                        suffixIcon: _searchController.text.isNotEmpty
-                            ? IconButton(
-                          icon: Icon(Icons.clear,
-                              color: Colors.grey,
-                              size: isTablet ? 24 : 20),
-                          onPressed: () {
-                            _searchController.clear();
-                            _removeOverlay();
-                          },
-                        )
-                            : Icon(Icons.search,
-                            color: Colors.orange,
-                            size: isTablet ? 24 : 20),
-                        filled: true,
-                        fillColor: Colors.white,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: BorderSide(color: Colors.grey.shade300),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: BorderSide(color: Colors.grey.shade300),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: const BorderSide(
-                              color: Color(0xffEB7720), width: 2),
-                        ),
-                      ),
-                      style: GoogleFonts.poppins(fontSize: isTablet ? 16 : 14),
-                      textInputAction: TextInputAction.search,
-                      onSubmitted: (query) {
-                        _navigateToSearchResults(query);
+              CompositedTransformTarget(
+                link: _layerLink,
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: () {
+                        Navigator.pop(context);
                       },
+                      icon: const Icon(Icons.arrow_back),
                     ),
-                  ),
-                ],
+                    SizedBox(width: isTablet ? 12 : 8),
+                    Expanded(
+                      child: TextField(
+                        controller: _searchController,
+                        focusNode: _searchFocusNode,
+                        decoration: InputDecoration(
+                          contentPadding: EdgeInsets.symmetric(
+                              horizontal: isTablet ? 20 : 15,
+                              vertical: isTablet ? 12 : 8),
+                          hintText: 'Search by item/crop/chemical name',
+                          hintStyle: GoogleFonts.poppins(
+                              color: Colors.grey, fontSize: isTablet ? 16 : 14),
+                          suffixIcon: _searchController.text.isNotEmpty
+                              ? IconButton(
+                                  icon: Icon(Icons.clear,
+                                      color: Colors.grey,
+                                      size: isTablet ? 24 : 20),
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    _removeOverlay();
+                                  },
+                                )
+                              : Icon(Icons.search,
+                                  color: Colors.orange,
+                                  size: isTablet ? 24 : 20),
+                          filled: true,
+                          fillColor: Colors.white,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: Colors.grey.shade300),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: Colors.grey.shade300),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(
+                                color: Color(0xffEB7720), width: 2),
+                          ),
+                        ),
+                        style: GoogleFonts.poppins(fontSize: isTablet ? 16 : 14),
+                        textInputAction: TextInputAction.search,
+                        onSubmitted: (query) {
+                          _navigateToSearchResults(query);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
               ),
               SizedBox(height: verticalSpacing),
 
@@ -494,17 +709,17 @@ Future<void> _loadRecentSearchProducts() async {
                 aspectRatio: 1.0,
                 child: _getEffectiveImageUrl(product.imageUrl).startsWith('http')
                     ? Image.network(
-                  _getEffectiveImageUrl(product.imageUrl),
-                  fit: BoxFit.contain,
-                  errorBuilder: (context, error, stackTrace) => Image.asset(
-                    'assets/placeholder.png',
-                    fit: BoxFit.contain,
-                  ),
-                )
+                        _getEffectiveImageUrl(product.imageUrl),
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) => Image.asset(
+                          'assets/placeholder.png',
+                          fit: BoxFit.contain,
+                        ),
+                      )
                     : Image.asset(
-                  _getEffectiveImageUrl(product.imageUrl),
-                  fit: BoxFit.contain,
-                ),
+                        _getEffectiveImageUrl(product.imageUrl),
+                        fit: BoxFit.contain,
+                      ),
               ),
             ),
             SizedBox(width: isTablet ? 10 : 8),
@@ -538,7 +753,7 @@ Future<void> _loadRecentSearchProducts() async {
   }
 }
 
-// New Search Results Page
+// Search Results Page (keep as is)
 class SearchResultsPage extends StatefulWidget {
   final String searchQuery;
   final List<Product> recentSearches;
@@ -559,8 +774,6 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
   bool _isSearching = false;
   String? _searchError;
   Timer? _debounce;
-
-  // Filter and Sort States
   String? _selectedCategory;
   String? _selectedSortBy;
   List<Map<String, String>> _categories = [];
@@ -623,12 +836,10 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
         results = ProductService.searchProductsLocally(query);
       }
 
-      // Apply category filter
       if (_selectedCategory != null && _selectedCategory != 'All' && _selectedCategory != 'All Categories') {
         results = results.where((product) => product.category == _selectedCategory).toList();
       }
 
-      // Apply sorting
       if (_selectedSortBy != null && results.isNotEmpty) {
         results.sort((a, b) {
           final double priceA = a.sellingPricePerSelectedUnit ?? a.pricePerSelectedUnit ?? 0.0;
@@ -722,7 +933,6 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
         padding: EdgeInsets.all(horizontalPadding),
         child: Column(
           children: [
-            // Category Filter and Sort By - Only show when there are search results
             if (_searchResults.isNotEmpty || _isSearching)
               Row(
                 children: [
@@ -812,7 +1022,6 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
               ),
             SizedBox(height: verticalSpacing),
 
-            // Search Results Display
             if (_isSearching)
               const Expanded(
                   child: Center(child: CircularProgressIndicator(color: Color(0xffEB7720)))
@@ -922,17 +1131,17 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
                     padding: EdgeInsets.all(isTablet ? 12 : 8),
                     child: _getEffectiveImageUrl(product.imageUrl).startsWith('http')
                         ? Image.network(
-                      _getEffectiveImageUrl(product.imageUrl),
-                      fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) => Image.asset(
-                        'assets/placeholder.png',
-                        fit: BoxFit.contain,
-                      ),
-                    )
+                            _getEffectiveImageUrl(product.imageUrl),
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) => Image.asset(
+                              'assets/placeholder.png',
+                              fit: BoxFit.contain,
+                            ),
+                          )
                         : Image.asset(
-                      _getEffectiveImageUrl(product.imageUrl),
-                      fit: BoxFit.contain,
-                    ),
+                            _getEffectiveImageUrl(product.imageUrl),
+                            fit: BoxFit.contain,
+                          ),
                   ),
                 ),
               ),

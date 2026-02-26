@@ -316,6 +316,12 @@ String _fixImageUrl(String rawUrl) {
       debugPrint('KYC Screen: API response for fetching data: $response');
 
       if (response['error'] == false && response['data'] != null) {
+          debugPrint('KYC Screen: KYC data submitted successfully');
+  
+  // Add this line - store KYC completion flag
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setBool('kyc_completed', true);
+
         // Handle the new API response format
         final responseData = response['data'];
 
@@ -410,13 +416,13 @@ String _fixImageUrl(String rawUrl) {
       } else {
         // Fallback to old API if new one doesn't return data
         debugPrint('KYC Screen: New API returned no data, trying old API...');
-        await _fetchKycDataOldApi(cusId);
+      //  await _fetchKycDataOldApi(cusId);
       }
     } catch (e) {
       debugPrint(
         'KYC Screen: Error fetching data from new API: $e. Trying old API...',
       );
-      await _fetchKycDataOldApi(cusId);
+     // await _fetchKycDataOldApi(cusId);
     } finally {
       setState(() {
         _isLoadingKycData = false;
@@ -424,120 +430,122 @@ String _fixImageUrl(String rawUrl) {
     }
   }
 
-  Future<void> _fetchKycDataOldApi(int cusId) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
+  // Future<void> _fetchKycDataOldApi(int cusId) async {
+  //   try {
+  //     final prefs = await SharedPreferences.getInstance();
 
-      double? latitude = prefs.getDouble('latitude');
-      double? longitude = prefs.getDouble('longitude');
-      String? deviceId = prefs.getString('device_id');
-      final response = await _callApiWithRetry(
-        body: {
-          'cid': _cid,
-          'type': '1003',
-          'cus_id': cusId.toString(),
-          'lt': latitude?.toString() ?? '1',
-          'ln': longitude?.toString() ?? '1',
-          'device_id': deviceId ?? '1',
-        },
-      );
+  //     double? latitude = prefs.getDouble('latitude');
+  //     double? longitude = prefs.getDouble('longitude');
+  //     String? deviceId = prefs.getString('device_id');
+  //     final response = await _callApiWithRetry(
+  //       body: {
+  //         'cid': _cid,
+  //         'type': '1003',
+  //         'cus_id': cusId.toString(),
+  //         'lt': latitude?.toString() ?? '1',
+  //         'ln': longitude?.toString() ?? '1',
+  //         'device_id': deviceId ?? '1',
+  //       },
+  //     );
 
-      debugPrint('KYC Screen: Old API response for fetching data: $response');
+  //     debugPrint('KYC Screen: Old API response for fetching data: $response');
 
-      if (response['status'] == 'success') {
-        // Handle both array and object response formats
-        dynamic responseData = response['data'];
-        if (responseData is List && responseData.isNotEmpty) {
-          responseData = responseData[0];
-        }
+  //     if (response['status'] == 'success') {
+  //       // Handle both array and object response formats
+  //       dynamic responseData = response['data'];
+  //       if (responseData is List && responseData.isNotEmpty) {
+  //         responseData = responseData[0];
+  //       }
 
-        // Extract all fields with null checks
-        final kycData = {
-          'name': responseData['name'] ?? '',
-          'email': responseData['email'] ?? '',
-          'mobile': responseData['mobile'] ?? '',
-          'business_name': responseData['business_name'] ?? '',
-          'gstin': responseData['gst'] ?? '',
-          'aadhar': responseData['aadhar'] ?? '',
-          'pan': responseData['pan'] ?? '',
-          'nature_of_business': responseData['nature_of_business'] ?? '',
-          'business_contact_number': responseData['phone']?.toString() ?? '',
-          'isGstinVerified': responseData['isGstinVerified'] ?? false,
-          'photo':
-              responseData['photo'] ?? '', // Get photo URL from old API too
-        };
+  //       // Extract all fields with null checks
+  //       final kycData = {
+  //         'name': responseData['name'] ?? '',
+  //         'email': responseData['email'] ?? '',
+  //         'mobile': responseData['mobile'] ?? '',
+  //         'business_name': responseData['business_name'] ?? '',
+  //         'gstin': responseData['gst'] ?? '',
+  //         'aadhar': responseData['aadhar'] ?? '',
+  //         'pan': responseData['pan'] ?? '',
+  //         'nature_of_business': responseData['nature_of_business'] ?? '',
+  //         'business_contact_number': responseData['phone']?.toString() ?? '',
+  //         'isGstinVerified': responseData['isGstinVerified'] ?? false,
+  //         'photo':
+  //             responseData['photo'] ?? '', // Get photo URL from old API too
+  //       };
 
-        // Load image from URL if available
-        Uint8List? imageBytes;
-        if (kycData['photo']!.isNotEmpty) {
-          debugPrint(
-            'KYC Screen: Photo URL found in old API: ${kycData['photo']}',
-          );
-          imageBytes = await _loadImageFromUrl(kycData['photo']!);
-        }
+  //       // Load image from URL if available
+  //       Uint8List? imageBytes;
+  //       if (kycData['photo']!.isNotEmpty) {
+  //         debugPrint(
+  //           'KYC Screen: Photo URL found in old API: ${kycData['photo']}',
+  //         );
+  //         imageBytes = await _loadImageFromUrl(kycData['photo']!);
+  //       }
 
-        // Update UI and provider
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          setState(() {
-            _fullNameController.text = kycData['name']!;
-            _mailIdController.text = kycData['email']!;
-            _whatsAppNumberController.text = kycData['mobile']!;
-            _businessNameController.text = kycData['business_name']!;
-            _gstinController.text = kycData['gstin']!;
-            _aadhaarNumberController.text = kycData['aadhar']!;
-            _panNumberController.text = kycData['pan']!;
-            _natureOfBusinessSelected = kycData['nature_of_business']!;
-            _businessContactNumberController.text =
-                kycData['business_contact_number']!;
-            _isGstinVerified = kycData['isGstinVerified']!;
-            _hasExistingKycData = true;
+  //       // Update UI and provider
+  //       WidgetsBinding.instance.addPostFrameCallback((_) {
+  //         setState(() {
+  //           _fullNameController.text = kycData['name']!;
+  //           _mailIdController.text = kycData['email']!;
+  //           _whatsAppNumberController.text = kycData['mobile']!;
+  //           _businessNameController.text = kycData['business_name']!;
+  //           _gstinController.text = kycData['gstin']!;
+  //           _aadhaarNumberController.text = kycData['aadhar']!;
+  //           _panNumberController.text = kycData['pan']!;
+  //           _natureOfBusinessSelected = kycData['nature_of_business']!;
+  //           _businessContactNumberController.text =
+  //               kycData['business_contact_number']!;
+  //           _isGstinVerified = kycData['isGstinVerified']!;
+  //           _hasExistingKycData = true;
 
-            // Set image bytes if loaded
-            if (imageBytes != null) {
-              _imageBytes = imageBytes;
-              debugPrint(
-                'KYC Screen: Image loaded and set successfully from old API',
-              );
-            }
-          });
+  //           // Set image bytes if loaded
+  //           if (imageBytes != null) {
+  //             _imageBytes = imageBytes;
+  //             debugPrint(
+  //               'KYC Screen: Image loaded and set successfully from old API',
+  //             );
+  //           }
+  //         });
 
-          // Save to provider
-          _kycBusinessDataProvider?.setKycBusinessData(
-            fullName: kycData['name'],
-            mailId: kycData['email'],
-            whatsAppNumber: kycData['mobile'],
-            businessName: kycData['business_name'],
-            gstin: kycData['gstin'],
-            isGstinVerified: kycData['isGstinVerified'],
-            aadhaarNumber: kycData['aadhar'],
-            panNumber: kycData['pan'],
-            natureOfBusiness: kycData['nature_of_business'],
-            businessContactNumber: kycData['business_contact_number'],
-            shopImageBytes: imageBytes, // Save image bytes
-          );
+  //         // Save to provider
+  //         _kycBusinessDataProvider?.setKycBusinessData(
+  //           fullName: kycData['name'],
+  //           mailId: kycData['email'],
+  //           whatsAppNumber: kycData['mobile'],
+  //           businessName: kycData['business_name'],
+  //           gstin: kycData['gstin'],
+  //           isGstinVerified: kycData['isGstinVerified'],
+  //           aadhaarNumber: kycData['aadhar'],
+  //           panNumber: kycData['pan'],
+  //           natureOfBusiness: kycData['nature_of_business'],
+  //           businessContactNumber: kycData['business_contact_number'],
+  //           shopImageBytes: imageBytes, // Save image bytes
+  //         );
 
-          // Update image provider
-          if (imageBytes != null) {
-            _kycImageProvider?.setKycImage(imageBytes);
-          }
-        });
+  //         // Update image provider
+  //         if (imageBytes != null) {
+  //           _kycImageProvider?.setKycImage(imageBytes);
+  //         }
+  //       });
 
-        debugPrint(
-          'KYC Screen: Successfully fetched and populated data from old API',
-        );
-      } else {
-        debugPrint(
-          'KYC Screen: No data found for cus_id: $cusId or API call failed. Loading local data instead.',
-        );
-        _loadExistingKycData();
-      }
-    } catch (e) {
-      debugPrint(
-        'KYC Screen: Error fetching data from old API: $e. Loading local data instead.',
-      );
-      _loadExistingKycData();
-    }
-  }
+  //       debugPrint(
+  //         'KYC Screen: Successfully fetched and populated data from old API',
+  //       );
+  //     } else {
+  //       debugPrint(
+  //         'KYC Screen: No data found for cus_id: $cusId or API call failed. Loading local data instead.',
+  //       );
+  //       _loadExistingKycData();
+  //     }
+  //   } catch (e) {
+  //     debugPrint(
+  //       'KYC Screen: Error fetching data from old API: $e. Loading local data instead.',
+  //     );
+  //     _loadExistingKycData();
+  //   }
+  // }
+
+
 
   void _loadExistingKycData() {
     debugPrint('KYC Screen: Loading existing KYC data from local provider');

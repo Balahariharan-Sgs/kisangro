@@ -1,6 +1,7 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:kisangro/login/kyc.dart';
 import 'package:kisangro/login/secondscreen.dart';
 import 'package:kisangro/home/bottom.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -48,8 +49,8 @@ class _splashscreenState extends State<splashscreen> {
     } else {
       debugPrint("⚠️ Location permission denied by user");
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setDouble('latitude', 0.0);
-      await prefs.setDouble('longitude', 0.0);
+      await prefs.setDouble('latitude', 3.0);
+      await prefs.setDouble('longitude', 3.0);
     }
   }
 
@@ -138,8 +139,8 @@ class _splashscreenState extends State<splashscreen> {
       final Map<String, String> params = {
         'cid': '85788578',
         'type': '1030',
-        'ln': latitude?.toString() ?? '0', // Default to '0' if not available
-        'lt': longitude?.toString() ?? '0', // Default to '0' if not available
+        'ln': latitude?.toString() ?? '3', // Default to '0' if not available
+        'lt': longitude?.toString() ?? '3', // Default to '0' if not available
         'device_id': deviceId ?? '12345', // Fallback to provided example
         'cus_id': customerId.toString(),
         'fcm_token': fcmToken,
@@ -186,32 +187,34 @@ class _splashscreenState extends State<splashscreen> {
     }
   }
 
-  Future<void> _checkLoginStatusAndNavigate() async {
-    await Future.delayed(const Duration(seconds: 2)); // Show splash for 2 seconds
+Future<void> _checkLoginStatusAndNavigate() async {
+  await Future.delayed(const Duration(seconds: 2)); // Show splash for 2 seconds
 
-    if (!mounted) return;
+  if (!mounted) return;
 
-    final prefs = await SharedPreferences.getInstance();
-    final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
-    final hasUploadedLicenses = prefs.getBool('hasUploadedLicenses') ?? false;
+  final prefs = await SharedPreferences.getInstance();
+  final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+  final hasUploadedLicenses = prefs.getBool('hasUploadedLicenses') ?? false;
+  final kycCompleted = prefs.getBool('kyc_completed') ?? false; // NEW: Check KYC completion
 
-    // Generate FCM token (only if logged in)
-    if (isLoggedIn) {
-      await _generateAndStoreFCMToken();
-    }
+  // Generate FCM token (only if logged in)
+  if (isLoggedIn) {
+    await _generateAndStoreFCMToken();
+  }
 
-    // Load categories
-    try {
-      debugPrint('SplashScreen: Loading categories...');
-      await ProductService.loadCategoriesFromApi();
-    } catch (e) {
-      debugPrint('Failed to load data: $e');
-    }
+  // Load categories
+  try {
+    debugPrint('SplashScreen: Loading categories...');
+    await ProductService.loadCategoriesFromApi();
+  } catch (e) {
+    debugPrint('Failed to load data: $e');
+  }
 
-    if (!mounted) return;
+  if (!mounted) return;
 
-    // Navigate based on login status
-    if (isLoggedIn) {
+  // Navigate based on login status AND KYC completion
+  if (isLoggedIn) {
+    if (kycCompleted) { // NEW: Check if KYC is completed
       if (hasUploadedLicenses) {
         Navigator.pushReplacement(
           context,
@@ -224,12 +227,25 @@ class _splashscreenState extends State<splashscreen> {
         );
       }
     } else {
+      // NEW: If logged in but KYC not completed, go to KYC screen
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const secondscreen()),
+        MaterialPageRoute(builder: (_) => kyc()),
       );
     }
+  } else {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const secondscreen()),
+    );
   }
+}
+
+// Add this helper method
+// Future<void> _clearKycCompletionFlag() async {
+//   final prefs = await SharedPreferences.getInstance();
+//   await prefs.remove('kyc_completed');
+// }
 
   // ================= LOCATION + DEVICE ID =================
   Future<void> _storeLocationAndDeviceId() async {
@@ -247,8 +263,8 @@ class _splashscreenState extends State<splashscreen> {
       debugPrint("📍 Location fetched successfully: ${position.latitude}, ${position.longitude}");
     } catch (e) {
       debugPrint("Location error: $e");
-      await prefs.setDouble('latitude', 0.0);
-      await prefs.setDouble('longitude', 0.0);
+      await prefs.setDouble('latitude', 3.0);
+      await prefs.setDouble('longitude', 3.0);
     }
 
     // -------- DEVICE ID --------

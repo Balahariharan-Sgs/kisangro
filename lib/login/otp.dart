@@ -326,6 +326,7 @@ class _OtpScreenState extends State<OtpScreen> {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setBool('isLoggedIn', true);
           await prefs.setString('mobile_number', widget.phoneNumber);
+          await prefs.remove('kyc_completed');
 
           debugPrint('Stored mobile number: ${widget.phoneNumber}');
 

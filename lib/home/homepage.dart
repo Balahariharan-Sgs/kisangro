@@ -266,54 +266,43 @@ String _getEffectiveImageUrl(String rawImageUrl) {
       }
     });
   }
+void _showLogoutDialog(BuildContext context) {
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => LogoutConfirmationDialog(
+      onCancel: () => Navigator.of(context).pop(),
+      onLogout: () async {
+        // Clear KYC data providers
+        try {
+          final kycBusinessDataProvider =
+              Provider.of<KycBusinessDataProvider>(context, listen: false);
+          final kycImageProvider = Provider.of<KycImageProvider>(context, listen: false);
 
-  void _showLogoutDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder:
-          (context) => LogoutConfirmationDialog(
-            onCancel: () => Navigator.of(context).pop(),
-            onLogout: () async {
-              // ADD KYC DATA CLEARING HERE
-              try {
-                // Clear KYC data providers
-                final kycBusinessDataProvider =
-                    Provider.of<KycBusinessDataProvider>(
-                      context,
-                      listen: false,
-                    );
-                final kycImageProvider = Provider.of<KycImageProvider>(
-                  context,
-                  listen: false,
-                );
+          await kycBusinessDataProvider.clearKycData();
+          kycImageProvider.clearKycImage();
 
-                await kycBusinessDataProvider
-                    .clearKycData(); // This is the actual method name
-                kycImageProvider.clearKycImage();
+          debugPrint('Cleared KYC data on logout');
+        } catch (e) {
+          debugPrint('Error clearing KYC data on logout: $e');
+        }
 
-                debugPrint('Cleared KYC data on logout');
-              } catch (e) {
-                debugPrint('Error clearing KYC data on logout: $e');
-              }
+        // Clear SharedPreferences
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.clear(); // This will remove all flags including kyc_completed
 
-              // Clear SharedPreferences
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.clear();
-
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (context) => const splashscreen()),
-                (Route<dynamic> route) => false,
-              );
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Logged out successfully!')),
-              );
-            },
-          ),
-    );
-  }
-
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const splashscreen()),
+          (Route<dynamic> route) => false,
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Logged out successfully!')),
+        );
+      },
+    ),
+  );
+}
   void _showComplaintDialog(BuildContext context) {
     final themeMode =
         Provider.of<ThemeModeProvider>(context, listen: false).themeMode;
@@ -1661,20 +1650,29 @@ String _getEffectiveImageUrl(String rawImageUrl) {
     );
   }
 
-  Widget _buildSearchBar(bool isDarkMode) {
-    final Color searchBarColor = isDarkMode ? Colors.grey[800]! : Colors.white;
-    final Color hintTextColor =
-        isDarkMode ? Colors.white70 : const Color(0xffEB7720);
+ Widget _buildSearchBar(bool isDarkMode) {
+  final Color searchBarColor = isDarkMode ? Colors.grey[800]! : Colors.white;
+  final Color hintTextColor =
+      isDarkMode ? Colors.white70 : const Color(0xffEB7720);
 
-    return Container(
+  return InkWell(
+    borderRadius: BorderRadius.circular(8),
+    onTap: () {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const SearchScreen()),
+      );
+    },
+    child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: searchBarColor,
         borderRadius: BorderRadius.circular(8),
         boxShadow: [
           BoxShadow(
-            color:
-                isDarkMode ? Colors.transparent : Colors.black.withOpacity(0.1),
+            color: isDarkMode
+                ? Colors.transparent
+                : Colors.black.withOpacity(0.1),
             blurRadius: 5,
             offset: const Offset(0, 3),
           ),
@@ -1682,30 +1680,17 @@ String _getEffectiveImageUrl(String rawImageUrl) {
       ),
       child: Row(
         children: [
-          Expanded(
-            child: GestureDetector(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const SearchScreen()),
-                );
-              },
-              child: Row(
-                children: [
-                  Icon(Icons.search, color: hintTextColor),
-                  const SizedBox(width: 10),
-                  Text(
-                    'Search here...',
-                    style: GoogleFonts.poppins(color: hintTextColor),
-                  ),
-                ],
-              ),
-            ),
+          Icon(Icons.search, color: hintTextColor),
+          const SizedBox(width: 10),
+          Text(
+            'Search here...',
+            style: GoogleFonts.poppins(color: hintTextColor),
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildDotIndicators() {
     final int count = _ads.isNotEmpty ? _ads.length : _carouselImages.length;

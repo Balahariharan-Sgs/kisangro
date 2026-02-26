@@ -83,8 +83,8 @@ class MultiProductOrderDetailPage extends StatelessWidget {
                     //_buildDetailRow('Order Date:', dateFormat.format(order.orderDate), isDarkMode), // Pass isDarkMode
                     _buildDetailRow('Total Amount:', '₹${order.totalAmount.toStringAsFixed(2)}', isDarkMode), // Pass isDarkMode
                     _buildDetailRow('Status:', order.status.name.toUpperCase(), isDarkMode), // Pass isDarkMode
-                    if (order.deliveredDate != null)
-                      _buildDetailRow('Delivered On:', dateFormat.format(order.deliveredDate!), isDarkMode), // Pass isDarkMode
+                    // if (order.deliveredDate != null)
+                    //   _buildDetailRow('Delivered On:', dateFormat.format(order.deliveredDate!), isDarkMode), // Pass isDarkMode
                   ],
                 ),
               ),

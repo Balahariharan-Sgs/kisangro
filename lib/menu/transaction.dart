@@ -598,21 +598,21 @@ class _TransactionHistoryPageState extends State<TransactionHistoryPage> {
           const SizedBox(height: 8),
           Row(
             children: [
-              ElevatedButton.icon(
-                onPressed: invoiceCallback,
-                icon: const Icon(Icons.download, size: 16, color: Colors.white),
-                label: Text(
-                  'Invoice',
-                  style: GoogleFonts.poppins(color: Colors.white),
-                ),
-                style: ElevatedButton.styleFrom(
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(6)),
-                  backgroundColor: orangeColor,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  elevation: 0,
-                ),
-              ),
+              // ElevatedButton.icon(
+              //   onPressed: invoiceCallback,
+              //   icon: const Icon(Icons.download, size: 16, color: Colors.white),
+              //   label: Text(
+              //     'Invoice',
+              //     style: GoogleFonts.poppins(color: Colors.white),
+              //   ),
+              //   style: ElevatedButton.styleFrom(
+              //     shape: RoundedRectangleBorder(
+              //         borderRadius: BorderRadius.circular(6)),
+              //     backgroundColor: orangeColor,
+              //     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              //     elevation: 0,
+              //   ),
+              // ),
               const Spacer(),
               Text(
                 dateTime,

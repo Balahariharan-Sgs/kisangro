@@ -928,7 +928,7 @@ class OrderCard extends StatelessWidget {
               children: [
                 Text(
                   'Order ID: ${order.id}',
-                  style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold, color: textColor), // Apply theme color
+                  style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.bold, color: textColor), // Apply theme color
                 ),
                 // Conditionally display the status box based on order status
                 // This is a single widget (Container) so it can be directly in the Row's children list.
@@ -1200,54 +1200,54 @@ class OrderCard extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      if (showInvoiceButton) // Only show Invoice button for delivered orders
-                        SizedBox(
-                          height: 40,
-                          child: OutlinedButton.icon(
-                            onPressed: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Generating invoice for order ${order.id}!', style: GoogleFonts.poppins())),
-                              );
-                            },
-                            style: OutlinedButton.styleFrom(
-                              // MODIFIED: Darker orange color for outline
-                              side: const BorderSide(color: Color(0xFFE65100)), // Always darker orange
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
-                            ),
-                            icon: const Icon(Icons.file_download_sharp, color: Color(0xffEB7720), size: 16), // Always orange
-                            label: Text(
-                              'Invoice',
-                              style: GoogleFonts.poppins(color: const Color(0xffEB7720)), // Always orange
-                            ),
-                          ),
-                        ),
+                      // if (showInvoiceButton) // Only show Invoice button for delivered orders
+                      //   SizedBox(
+                      //     height: 40,
+                      //     child: OutlinedButton.icon(
+                      //       onPressed: () {
+                      //         ScaffoldMessenger.of(context).showSnackBar(
+                      //           SnackBar(content: Text('Generating invoice for order ${order.id}!', style: GoogleFonts.poppins())),
+                      //         );
+                      //       },
+                      //       style: OutlinedButton.styleFrom(
+                      //         // MODIFIED: Darker orange color for outline
+                      //         side: const BorderSide(color: Color(0xFFE65100)), // Always darker orange
+                      //         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
+                      //       ),
+                      //       icon: const Icon(Icons.file_download_sharp, color: Color(0xffEB7720), size: 16), // Always orange
+                      //       label: Text(
+                      //         'Invoice',
+                      //         style: GoogleFonts.poppins(color: const Color(0xffEB7720)), // Always orange
+                      //       ),
+                      //     ),
+                      //   ),
                       // Conditional spacing between buttons
                       if (showInvoiceButton && showBrowseMoreButton)
                         const SizedBox(width: 12),
                       if (showRateProductButton)
-                        Expanded(
-                          child: SizedBox(
-                            height: 40,
-                            child: ElevatedButton.icon(
-                              onPressed: () {
-                                // You would typically navigate to a rating screen or show a dialog here
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Rating product for order ${order.id}!', style: GoogleFonts.poppins())),
-                                );
-                              },
-                              style: ElevatedButton.styleFrom(
-                                // MODIFIED: Darker orange color for fill
-                                backgroundColor: const Color(0xFFE65100), // Always darker orange
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
-                              ),
-                              icon: const Icon(Icons.star, color: Colors.white, size: 16),
-                              label: Text(
-                                'Rate Product',
-                                style: GoogleFonts.poppins(color: Colors.white),
-                              ),
-                            ),
-                          ),
-                        ),
+                        // Expanded(
+                        //   child: SizedBox(
+                        //     height: 40,
+                        //     child: ElevatedButton.icon(
+                        //       onPressed: () {
+                        //         // You would typically navigate to a rating screen or show a dialog here
+                        //         ScaffoldMessenger.of(context).showSnackBar(
+                        //           SnackBar(content: Text('Rating product for order ${order.id}!', style: GoogleFonts.poppins())),
+                        //         );
+                        //       },
+                        //       style: ElevatedButton.styleFrom(
+                        //         // MODIFIED: Darker orange color for fill
+                        //         backgroundColor: const Color(0xFFE65100), // Always darker orange
+                        //         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
+                        //       ),
+                        //       icon: const Icon(Icons.star, color: Colors.white, size: 16),
+                        //       label: Text(
+                        //         'Rate Product',
+                        //         style: GoogleFonts.poppins(color: Colors.white),
+                        //       ),
+                        //     ),
+                        //   ),
+                        // ),
                       // Conditional spacing between buttons
                       if (showRateProductButton && showBrowseMoreButton && order.status != OrderStatus.cancelled)
                         const SizedBox(width: 12),
