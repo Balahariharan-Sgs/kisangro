@@ -76,22 +76,23 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   static const int maxChars = 100;
 
   // FIXED: Using the same working method as product.dart
-// FIXED: Using the same working method as product.dart
-String _getEffectiveImageUrl(String rawImageUrl) {
-  if (rawImageUrl.isEmpty ||
-      rawImageUrl == 'https://sgserp.in/erp/api/' ||
-      (Uri.tryParse(rawImageUrl)?.isAbsolute != true &&
-          !rawImageUrl.startsWith('assets/'))) {
-    return ProductService.getRandomValidImageUrl(); // Use a random valid API image or local placeholder
+  // FIXED: Using the same working method as product.dart
+  String _getEffectiveImageUrl(String rawImageUrl) {
+    if (rawImageUrl.isEmpty ||
+        rawImageUrl == 'https://sgserp.in/erp/api/' ||
+        (Uri.tryParse(rawImageUrl)?.isAbsolute != true &&
+            !rawImageUrl.startsWith('assets/'))) {
+      return ProductService.getRandomValidImageUrl(); // Use a random valid API image or local placeholder
+    }
+
+    // Handle URLs without extensions (like the banner URL)
+    if (rawImageUrl.startsWith('http') && !rawImageUrl.contains('.')) {
+      return rawImageUrl + '.jpg'; // Add .jpg extension as fallback
+    }
+
+    return rawImageUrl;
   }
-  
-  // Handle URLs without extensions (like the banner URL)
-  if (rawImageUrl.startsWith('http') && !rawImageUrl.contains('.')) {
-    return rawImageUrl + '.jpg'; // Add .jpg extension as fallback
-  }
-  
-  return rawImageUrl;
-}
+
   @override
   void initState() {
     super.initState();
@@ -266,43 +267,53 @@ String _getEffectiveImageUrl(String rawImageUrl) {
       }
     });
   }
-void _showLogoutDialog(BuildContext context) {
-  showDialog(
-    context: context,
-    barrierDismissible: false,
-    builder: (context) => LogoutConfirmationDialog(
-      onCancel: () => Navigator.of(context).pop(),
-      onLogout: () async {
-        // Clear KYC data providers
-        try {
-          final kycBusinessDataProvider =
-              Provider.of<KycBusinessDataProvider>(context, listen: false);
-          final kycImageProvider = Provider.of<KycImageProvider>(context, listen: false);
 
-          await kycBusinessDataProvider.clearKycData();
-          kycImageProvider.clearKycImage();
+  void _showLogoutDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder:
+          (context) => LogoutConfirmationDialog(
+            onCancel: () => Navigator.of(context).pop(),
+            onLogout: () async {
+              // Clear KYC data providers
+              try {
+                final kycBusinessDataProvider =
+                    Provider.of<KycBusinessDataProvider>(
+                      context,
+                      listen: false,
+                    );
+                final kycImageProvider = Provider.of<KycImageProvider>(
+                  context,
+                  listen: false,
+                );
 
-          debugPrint('Cleared KYC data on logout');
-        } catch (e) {
-          debugPrint('Error clearing KYC data on logout: $e');
-        }
+                await kycBusinessDataProvider.clearKycData();
+                kycImageProvider.clearKycImage();
 
-        // Clear SharedPreferences
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.clear(); // This will remove all flags including kyc_completed
+                debugPrint('Cleared KYC data on logout');
+              } catch (e) {
+                debugPrint('Error clearing KYC data on logout: $e');
+              }
 
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (context) => const splashscreen()),
-          (Route<dynamic> route) => false,
-        );
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Logged out successfully!')),
-        );
-      },
-    ),
-  );
-}
+              // Clear SharedPreferences
+              final prefs = await SharedPreferences.getInstance();
+              await prefs
+                  .clear(); // This will remove all flags including kyc_completed
+
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (context) => const splashscreen()),
+                (Route<dynamic> route) => false,
+              );
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Logged out successfully!')),
+              );
+            },
+          ),
+    );
+  }
+
   void _showComplaintDialog(BuildContext context) {
     final themeMode =
         Provider.of<ThemeModeProvider>(context, listen: false).themeMode;
@@ -1105,199 +1116,291 @@ void _showLogoutDialog(BuildContext context) {
                           ),
                         ),
                         Container(
-  width: MediaQuery.of(context).size.width,
-  height: 400,
-  padding: const EdgeInsets.all(16),
-  decoration: BoxDecoration(
-    image: dealsBannerUrl != null && dealsBannerUrl.isNotEmpty
-        ? DecorationImage(
-            image: NetworkImage(
-              _getEffectiveImageUrl(dealsBannerUrl),
-            ),
-            fit: BoxFit.cover,
-            alignment: Alignment.topCenter,
-            onError: (exception, stackTrace) {
-              debugPrint('Error loading banner: $exception');
-            },
-          )
-        : const DecorationImage(
-            image: AssetImage("assets/deals.png"),
-            fit: BoxFit.cover,
-            alignment: Alignment.topCenter,
-          ),
-  ),
-  child: Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      const SizedBox(height: 160),
-      SizedBox(
-        height: 180,
-        child: _dealsOfTheDay.isEmpty
-            ? ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: 6,
-                itemBuilder: (context, index) {
-                  return _buildShimmerDealTile(isDarkMode);
-                },
-              )
-            : ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: _dealsOfTheDay.length,
-                itemBuilder: (context, index) {
-                  final deal = _dealsOfTheDay[index];
-                  
-                  // Handle product image with error handling
-                  String productImageUrl = deal.productImg;
-                  if (productImageUrl.isEmpty) {
-                    productImageUrl = 'assets/placeholder.png';
-                  } else if (!productImageUrl.startsWith('http') && !productImageUrl.startsWith('assets/')) {
-                    productImageUrl = 'assets/placeholder.png';
-                  }
-                  
-                  final tempProduct = Product(
-                    mainProductId: deal.proId.toString(),
-                    title: deal.productName,
-                    subtitle: deal.dealName,
-                    imageUrl: productImageUrl,
-                    category: 'Deals',
-                    availableSizes: [
-                      ProductSize(
-                        proId: deal.proId,
-                        size: deal.size.isNotEmpty ? deal.size : 'Unit',
-                        price: deal.mrp ?? 0.0,
-                        sellingPrice: deal.sellingPrice,
-                      ),
-                    ],
-                    initialSelectedUnitProId: deal.proId,
-                  );
-
-                  return Container(
-                    width: 140,
-                    margin: const EdgeInsets.only(right: 12),
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: isDarkMode ? Colors.grey[700]! : Colors.grey.shade300,
-                      ),
-                      borderRadius: BorderRadius.circular(4),
-                      color: cardBackgroundColor,
-                    ),
-                    child: GestureDetector(
-                      onTap: () {
-                        // Handle deal tap
-                      },
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          SizedBox(
-                            width: double.infinity,
-                            height: 80,
-                            child: Center(
-                              child: AspectRatio(
-                                aspectRatio: 1.0,
-                                child: productImageUrl.startsWith('http')
-                                    ? Image.network(
-                                        productImageUrl,
-                                        fit: BoxFit.contain,
-                                        errorBuilder: (context, error, stackTrace) {
-                                          debugPrint('Error loading deal product image: $error');
-                                          return Image.asset(
-                                            'assets/placeholder.png',
-                                            fit: BoxFit.contain,
-                                          );
-                                        },
-                                        loadingBuilder: (context, child, loadingProgress) {
-                                          if (loadingProgress == null) return child;
-                                          return Center(
-                                            child: SizedBox(
-                                              width: 20,
-                                              height: 20,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                                value: loadingProgress.expectedTotalBytes != null
-                                                    ? loadingProgress.cumulativeBytesLoaded /
-                                                        loadingProgress.expectedTotalBytes!
-                                                    : null,
-                                                color: const Color(0xffEB7720),
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                      )
-                                    : Image.asset(
-                                        productImageUrl,
-                                        fit: BoxFit.contain,
-                                        errorBuilder: (context, error, stackTrace) {
-                                          return Image.asset(
-                                            'assets/placeholder.png',
-                                            fit: BoxFit.contain,
-                                          );
-                                        },
+                          width: MediaQuery.of(context).size.width,
+                          height: 400,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            image:
+                                dealsBannerUrl != null &&
+                                        dealsBannerUrl.isNotEmpty
+                                    ? DecorationImage(
+                                      image: NetworkImage(
+                                        _getEffectiveImageUrl(dealsBannerUrl),
                                       ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 5),
-                          Text(
-                            deal.productName,
-                            style: GoogleFonts.poppins(
-                              fontWeight: FontWeight.bold,
-                              color: textColor,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  '₹ ${deal.mrp?.toStringAsFixed(2) ?? 'N/A'}',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 12,
-                                    color: isDarkMode ? Colors.grey[400] : Colors.grey,
-                                    decoration: (deal.sellingPrice != null &&
-                                            deal.sellingPrice != deal.mrp)
-                                        ? TextDecoration.lineThrough
-                                        : TextDecoration.none,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              if (deal.sellingPrice != null && deal.sellingPrice != deal.mrp)
-                                Padding(
-                                  padding: const EdgeInsets.only(left: 4.0),
-                                  child: Flexible(
-                                    child: Text(
-                                      '₹ ${deal.sellingPrice!.toStringAsFixed(2)}',
-                                      style: GoogleFonts.poppins(
-                                        color: Colors.green,
-                                        fontSize: 12.5,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
+                                      fit: BoxFit.cover,
+                                      alignment: Alignment.topCenter,
+                                      onError: (exception, stackTrace) {
+                                        debugPrint(
+                                          'Error loading banner: $exception',
+                                        );
+                                      },
+                                    )
+                                    : const DecorationImage(
+                                      image: AssetImage("assets/deals.png"),
+                                      fit: BoxFit.cover,
+                                      alignment: Alignment.topCenter,
                                     ),
-                                  ),
-                                ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const SizedBox(height: 160),
+                              SizedBox(
+                                height: 180,
+                                child:
+                                    _dealsOfTheDay.isEmpty
+                                        ? ListView.builder(
+                                          scrollDirection: Axis.horizontal,
+                                          itemCount: 6,
+                                          itemBuilder: (context, index) {
+                                            return _buildShimmerDealTile(
+                                              isDarkMode,
+                                            );
+                                          },
+                                        )
+                                        : ListView.builder(
+                                          scrollDirection: Axis.horizontal,
+                                          itemCount: _dealsOfTheDay.length,
+                                          itemBuilder: (context, index) {
+                                            final deal = _dealsOfTheDay[index];
+
+                                            // Handle product image with error handling
+                                            String productImageUrl =
+                                                deal.productImg;
+                                            if (productImageUrl.isEmpty) {
+                                              productImageUrl =
+                                                  'assets/placeholder.png';
+                                            } else if (!productImageUrl
+                                                    .startsWith('http') &&
+                                                !productImageUrl.startsWith(
+                                                  'assets/',
+                                                )) {
+                                              productImageUrl =
+                                                  'assets/placeholder.png';
+                                            }
+
+                                            final tempProduct = Product(
+                                              mainProductId:
+                                                  deal.proId.toString(),
+                                              title: deal.productName,
+                                              subtitle: deal.dealName,
+                                              imageUrl: productImageUrl,
+                                              category: 'Deals',
+                                              availableSizes: [
+                                                ProductSize(
+                                                  proId: deal.proId,
+                                                  size:
+                                                      deal.size.isNotEmpty
+                                                          ? deal.size
+                                                          : 'Unit',
+                                                  price: deal.mrp ?? 0.0,
+                                                  sellingPrice:
+                                                      deal.sellingPrice,
+                                                ),
+                                              ],
+                                              initialSelectedUnitProId:
+                                                  deal.proId,
+                                            );
+
+                                            return Container(
+                                              width: 140,
+                                              margin: const EdgeInsets.only(
+                                                right: 12,
+                                              ),
+                                              padding: const EdgeInsets.all(10),
+                                              decoration: BoxDecoration(
+                                                border: Border.all(
+                                                  color:
+                                                      isDarkMode
+                                                          ? Colors.grey[700]!
+                                                          : Colors
+                                                              .grey
+                                                              .shade300,
+                                                ),
+                                                borderRadius:
+                                                    BorderRadius.circular(4),
+                                                color: cardBackgroundColor,
+                                              ),
+                                              child: GestureDetector(
+                                                onTap: () {
+                                                  // Handle deal tap
+                                                },
+                                                child: Column(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
+                                                  children: [
+                                                    SizedBox(
+                                                      width: double.infinity,
+                                                      height: 80,
+                                                      child: Center(
+                                                        child: AspectRatio(
+                                                          aspectRatio: 1.0,
+                                                          child:
+                                                              productImageUrl
+                                                                      .startsWith(
+                                                                        'http',
+                                                                      )
+                                                                  ? Image.network(
+                                                                    productImageUrl,
+                                                                    fit:
+                                                                        BoxFit
+                                                                            .contain,
+                                                                    errorBuilder: (
+                                                                      context,
+                                                                      error,
+                                                                      stackTrace,
+                                                                    ) {
+                                                                      debugPrint(
+                                                                        'Error loading deal product image: $error',
+                                                                      );
+                                                                      return Image.asset(
+                                                                        'assets/placeholder.png',
+                                                                        fit:
+                                                                            BoxFit.contain,
+                                                                      );
+                                                                    },
+                                                                    loadingBuilder: (
+                                                                      context,
+                                                                      child,
+                                                                      loadingProgress,
+                                                                    ) {
+                                                                      if (loadingProgress ==
+                                                                          null)
+                                                                        return child;
+                                                                      return Center(
+                                                                        child: SizedBox(
+                                                                          width:
+                                                                              20,
+                                                                          height:
+                                                                              20,
+                                                                          child: CircularProgressIndicator(
+                                                                            strokeWidth:
+                                                                                2,
+                                                                            value:
+                                                                                loadingProgress.expectedTotalBytes !=
+                                                                                        null
+                                                                                    ? loadingProgress.cumulativeBytesLoaded /
+                                                                                        loadingProgress.expectedTotalBytes!
+                                                                                    : null,
+                                                                            color: const Color(
+                                                                              0xffEB7720,
+                                                                            ),
+                                                                          ),
+                                                                        ),
+                                                                      );
+                                                                    },
+                                                                  )
+                                                                  : Image.asset(
+                                                                    productImageUrl,
+                                                                    fit:
+                                                                        BoxFit
+                                                                            .contain,
+                                                                    errorBuilder: (
+                                                                      context,
+                                                                      error,
+                                                                      stackTrace,
+                                                                    ) {
+                                                                      return Image.asset(
+                                                                        'assets/placeholder.png',
+                                                                        fit:
+                                                                            BoxFit.contain,
+                                                                      );
+                                                                    },
+                                                                  ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 5),
+                                                    Text(
+                                                      deal.productName,
+                                                      style:
+                                                          GoogleFonts.poppins(
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                            color: textColor,
+                                                          ),
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                    ),
+                                                    Row(
+                                                      mainAxisAlignment:
+                                                          MainAxisAlignment
+                                                              .center,
+                                                      children: [
+                                                        Flexible(
+                                                          child: Text(
+                                                            '₹ ${deal.mrp?.toStringAsFixed(2) ?? 'N/A'}',
+                                                            style: GoogleFonts.poppins(
+                                                              fontSize: 12,
+                                                              color:
+                                                                  isDarkMode
+                                                                      ? Colors
+                                                                          .grey[400]
+                                                                      : Colors
+                                                                          .grey,
+                                                              decoration:
+                                                                  (deal.sellingPrice !=
+                                                                              null &&
+                                                                          deal.sellingPrice !=
+                                                                              deal.mrp)
+                                                                      ? TextDecoration
+                                                                          .lineThrough
+                                                                      : TextDecoration
+                                                                          .none,
+                                                            ),
+                                                            maxLines: 1,
+                                                            overflow:
+                                                                TextOverflow
+                                                                    .ellipsis,
+                                                          ),
+                                                        ),
+                                                        if (deal.sellingPrice !=
+                                                                null &&
+                                                            deal.sellingPrice !=
+                                                                deal.mrp)
+                                                          Padding(
+                                                            padding:
+                                                                const EdgeInsets.only(
+                                                                  left: 4.0,
+                                                                ),
+                                                            child: Flexible(
+                                                              child: Text(
+                                                                '₹ ${deal.sellingPrice!.toStringAsFixed(2)}',
+                                                                style: GoogleFonts.poppins(
+                                                                  color:
+                                                                      Colors
+                                                                          .green,
+                                                                  fontSize:
+                                                                      12.5,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .w600,
+                                                                ),
+                                                                maxLines: 1,
+                                                                overflow:
+                                                                    TextOverflow
+                                                                        .ellipsis,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                      ],
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                        ),
+                              ),
                             ],
                           ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-      ),
-    ],
-  ),
-),
-                     
+                        ),
                       ],
                     )
-                    : const SizedBox.shrink(),
-                const SizedBox(height: 8),
+                     : const SizedBox.shrink(),
+                    //: const SizedBox.shrink(),
+                //const SizedBox(height: 8),
                 Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 12,
@@ -1533,114 +1636,66 @@ void _showLogoutDialog(BuildContext context) {
                   ),
                 ),
                 const SizedBox(height: 10),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final double screenWidth = constraints.maxWidth;
-                      final orientation = MediaQuery.of(context).orientation;
-                      int crossAxisCount;
-                      double childAspectRatio;
-
-                      if (screenWidth > 900) {
-                        crossAxisCount = 5;
-                        childAspectRatio = 0.35;
-                      } else if (screenWidth > 700) {
-                        crossAxisCount = 4;
-                        childAspectRatio = 0.40;
-                      } else {
-                        crossAxisCount = 2;
-                        childAspectRatio = 1.0;
-                      }
-
-                      if (orientation == Orientation.landscape &&
-                          screenWidth < 700) {
-                        crossAxisCount = 3;
-                        childAspectRatio = 0.85;
-                      }
-
-                      if (isTablet && orientation == Orientation.landscape) {
-                        crossAxisCount = 5;
-                        childAspectRatio = 0.80;
-                      }
-
-                      return _newOnKisangroItems.isEmpty
-                          ? GridView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            gridDelegate:
-                                SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: crossAxisCount,
-                                  crossAxisSpacing: 12,
-                                  mainAxisSpacing: 12,
-                                  childAspectRatio: childAspectRatio,
-                                ),
+                SizedBox(
+                  height: 145,
+                  child:
+                      _newOnKisangroItems.isEmpty
+                          ? ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            padding: const EdgeInsets.only(left: 12, right: 12),
                             itemCount: 6,
                             itemBuilder: (context, index) {
                               return _buildShimmerProductTile(
+                                width: 150,
                                 isDarkMode: isDarkMode,
                               );
                             },
                           )
-                          : GridView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            gridDelegate:
-                                SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: crossAxisCount,
-                                  crossAxisSpacing: 12,
-                                  mainAxisSpacing: 12,
-                                  childAspectRatio: childAspectRatio,
-                                ),
+                          : ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            padding: const EdgeInsets.only(left: 12, right: 12),
                             itemCount: _newOnKisangroItems.length,
                             itemBuilder: (context, index) {
                               final product = _newOnKisangroItems[index];
-                              return ChangeNotifierProvider<Product>.value(
-                                value: product,
-                                child: IntrinsicHeight(
-                                  child: GestureDetector(
-                                    onTap: () {
-                                      final categoryId =
-                                          _getCategoryIdFromProduct(product);
-                                      if (categoryId.isNotEmpty) {
-                                        // Navigate to category products screen
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder:
-                                                (context) =>
-                                                    CategoryProductsScreen(
-                                                      categoryTitle:
-                                                          product.category,
-                                                      categoryId: categoryId,
-                                                    ),
-                                          ),
-                                        );
-                                      } else {
-                                        //  // Fallback to product detail if category not found
-                                        //   Navigator.push(
-                                        //     context,
-                                        //     MaterialPageRoute(
-                                        //       builder: (context) => ProductDetailPage(
-                                        //         product: product,
-                                        //       ),
-                                        //     ),
-                                        //   );
-                                      }
-                                    },
-                                    child: _buildProductTile(
-                                      context,
-                                      product,
-                                      isDarkMode: isDarkMode,
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 12),
+                                child: SizedBox(
+                                  width: 150,
+                                  child: ChangeNotifierProvider<Product>.value(
+                                    value: product,
+                                    child: GestureDetector(
+                                      onTap: () {
+                                        final categoryId =
+                                            _getCategoryIdFromProduct(product);
+                                        if (categoryId.isNotEmpty) {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder:
+                                                  (context) =>
+                                                      CategoryProductsScreen(
+                                                        categoryTitle:
+                                                            product.category,
+                                                        categoryId: categoryId,
+                                                      ),
+                                            ),
+                                          );
+                                        }
+                                      },
+                                      child: _buildProductTile(
+                                        context,
+                                        product,
+                                        tileWidth: 150,
+                                        isDarkMode: isDarkMode,
+                                      ),
                                     ),
                                   ),
                                 ),
                               );
                             },
-                          );
-                    },
-                  ),
+                          ),
                 ),
+
                 const SizedBox(height: 30),
               ],
             ),
@@ -1650,47 +1705,48 @@ void _showLogoutDialog(BuildContext context) {
     );
   }
 
- Widget _buildSearchBar(bool isDarkMode) {
-  final Color searchBarColor = isDarkMode ? Colors.grey[800]! : Colors.white;
-  final Color hintTextColor =
-      isDarkMode ? Colors.white70 : const Color(0xffEB7720);
+  Widget _buildSearchBar(bool isDarkMode) {
+    final Color searchBarColor = isDarkMode ? Colors.grey[800]! : Colors.white;
+    final Color hintTextColor =
+        isDarkMode ? Colors.white70 : const Color(0xffEB7720);
 
-  return InkWell(
-    borderRadius: BorderRadius.circular(8),
-    onTap: () {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => const SearchScreen()),
-      );
-    },
-    child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: searchBarColor,
-        borderRadius: BorderRadius.circular(8),
-        boxShadow: [
-          BoxShadow(
-            color: isDarkMode
-                ? Colors.transparent
-                : Colors.black.withOpacity(0.1),
-            blurRadius: 5,
-            offset: const Offset(0, 3),
-          ),
-        ],
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const SearchScreen()),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: searchBarColor,
+          borderRadius: BorderRadius.circular(8),
+          boxShadow: [
+            BoxShadow(
+              color:
+                  isDarkMode
+                      ? Colors.transparent
+                      : Colors.black.withOpacity(0.1),
+              blurRadius: 5,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.search, color: hintTextColor),
+            const SizedBox(width: 10),
+            Text(
+              'Search here...',
+              style: GoogleFonts.poppins(color: hintTextColor),
+            ),
+          ],
+        ),
       ),
-      child: Row(
-        children: [
-          Icon(Icons.search, color: hintTextColor),
-          const SizedBox(width: 10),
-          Text(
-            'Search here...',
-            style: GoogleFonts.poppins(color: hintTextColor),
-          ),
-        ],
-      ),
-    ),
-  );
-}
+    );
+  }
 
   Widget _buildDotIndicators() {
     final int count = _ads.isNotEmpty ? _ads.length : _carouselImages.length;

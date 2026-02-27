@@ -230,14 +230,14 @@ class _NewOnKisangroProductsScreenState extends State<NewOnKisangroProductsScree
     if (isTablet) {
       if (orientation == Orientation.portrait) {
         crossAxisCount = 3;
-        childAspectRatio = 0.6;
+        childAspectRatio = 0.90;
       } else { // Orientation.landscape
         crossAxisCount = 5;
-        childAspectRatio = 0.5;
+        childAspectRatio = 1.0;
       }
     } else { // Mobile phones
       crossAxisCount = 2;
-      childAspectRatio = 0.55;
+      childAspectRatio = 1.20;
     }
 
     final Color baseColor = isDarkMode ? Colors.grey[800]! : Colors.grey[300]!;
@@ -297,26 +297,6 @@ class _NewOnKisangroProductsScreenState extends State<NewOnKisangroProductsScree
                             color: Colors.white,
                           ),
                           const SizedBox(height: 8),
-                          Container(
-                            height: 36,
-                            color: Colors.white,
-                          ),
-                          const SizedBox(height: 8),
-                        ],
-                      ),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Container(
-                              height: 36,
-                              color: Colors.white,
-                            ),
-                          ),
-                          Container(
-                            width: 44,
-                            height: 44,
-                            color: Colors.white,
-                          ),
                         ],
                       ),
                     ],
@@ -343,15 +323,17 @@ class _NewOnKisangroProductsScreenState extends State<NewOnKisangroProductsScree
 
     if (isTablet) {
       if (orientation == Orientation.portrait) {
-        crossAxisCount = 3; // 3 tiles horizontally in portrait mode for tablets
-        childAspectRatio = 0.6; // Adjusted for vertical fit and medium size
-      } else { // Orientation.landscape
-        crossAxisCount = 5; // 5 tiles horizontally in landscape mode for tablets
-        childAspectRatio = 0.5; // Adjusted for shorter height
+        crossAxisCount = 3;
+        childAspectRatio = 0.80;
+      } else {
+        // Orientation.landscape
+        crossAxisCount = 5;
+        childAspectRatio = 1.0;
       }
-    } else { // Mobile phones
-      crossAxisCount = 2; // 2 tiles for mobile phones
-      childAspectRatio = 0.55; // Default for mobile
+    } else {
+      // Mobile phones
+      crossAxisCount = 2;
+      childAspectRatio = 1.00;
     }
 
     // Define colors based on theme
@@ -496,161 +478,134 @@ class _NewOnKisangroProductsScreenState extends State<NewOnKisangroProductsScree
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SizedBox(
+              /// IMAGE
+              Container(
                 height: 100,
                 width: double.infinity,
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: _getEffectiveImageUrl(product.imageUrl).startsWith('http')
-                        ? Image.network(
-                      _getEffectiveImageUrl(product.imageUrl),
-                      fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) => Image.asset(
-                        'assets/placeholder.png', // Fallback to local placeholder if network image fails
-                        fit: BoxFit.contain,
+                child: Stack(
+                  children: [
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: _getEffectiveImageUrl(product.imageUrl).startsWith('http')
+                            ? Image.network(
+                                _getEffectiveImageUrl(product.imageUrl),
+                                fit: BoxFit.contain,
+                                errorBuilder: (context, error, stackTrace) => Image.asset(
+                                  'assets/placeholder.png', // Fallback to local placeholder if network image fails
+                                  fit: BoxFit.contain,
+                                ),
+                              )
+                            : Image.asset(
+                                _getEffectiveImageUrl(product.imageUrl), // This will now use the dynamic fallback if rawImageUrl is empty
+                                fit: BoxFit.contain,
+                              ),
                       ),
-                    )
-                        : Image.asset(
-                      _getEffectiveImageUrl(product.imageUrl), // This will now use the dynamic fallback if rawImageUrl is empty
-                      fit: BoxFit.contain,
                     ),
-                  ),
+
+                    /// Wishlist icon (top right)
+                    Positioned(
+                      top: 4,
+                      right: 4,
+                      child: Consumer<WishlistModel>(
+                        builder: (context, wishlist, child) {
+                          final isFavorite = wishlist.containsItem(
+                            product.selectedUnit.proId,
+                          );
+
+                          return GestureDetector(
+                            onTap: () async {
+                              final result = await wishlist.toggleItem(product);
+                              if (result != null && mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      result
+                                          ? '${product.title} added to wishlist!'
+                                          : '${product.title} removed from wishlist!',
+                                    ),
+                                    backgroundColor: result ? Colors.blue : Colors.red,
+                                  ),
+                                );
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(5),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.9),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                isFavorite ? Icons.favorite : Icons.favorite_border,
+                                color: const Color(0xffEB7720),
+                                size: 20,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              Expanded( // Use Expanded to allow content to take available space
-                child: Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween, // Distribute space vertically
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            product.title,
-                            style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 14, color: textColor), // Apply theme color
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          Text(
-                            product.subtitle,
-                            style: GoogleFonts.poppins(fontSize: 12, color: textColor), // Apply theme color
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          // Display MRP and Selling Price for the tile
-                          Row(
-                            children: [
-                              Text(
-                                '₹ ${currentMrp?.toStringAsFixed(2) ?? 'N/A'}',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 12,
-                                  color: greyTextColor, // Apply theme color
-                                  decoration: (currentSellingPrice != null && currentSellingPrice != currentMrp)
-                                      ? TextDecoration.lineThrough
-                                      : TextDecoration.none,
-                                ),
-                              ),
-                              if (currentSellingPrice != null && currentSellingPrice != currentMrp)
-                                Padding(
-                                  padding: const EdgeInsets.only(left: 4.0),
-                                  child: Text(
-                                    '₹ ${currentSellingPrice.toStringAsFixed(2)}',
-                                    style: GoogleFonts.poppins(fontSize: 14, color: Colors.green, fontWeight: FontWeight.w600),
-                                  ),
-                                ),
-                            ],
-                          ),
-                          Text('Unit: ${currentSelectedUnit.size}', // FIX 2: Use .size property
-                              style: GoogleFonts.poppins(fontSize: 10, color: themeOrange)),
-                          const SizedBox(height: 8),
-                          // Replace the dropdown container with this:
-                          Container(
-                            height: 36,
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
-                            decoration: BoxDecoration(
-                              border: Border.all(color: themeOrange),
-                              borderRadius: BorderRadius.circular(6),
-                              color: isDarkMode ? Colors.grey[800] : Colors.white, // Apply theme color
-                            ),
-                            child: InkWell(
-                              onTap: () {
-                                _showSizeSelectionBottomSheet(context, product, isDarkMode);
-                              },
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    product.selectedUnit.size,
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 12,
-                                      color: textColor,
-                                    ),
-                                  ),
-                                  Icon(
-                                    Icons.arrow_drop_down,
-                                    color: themeOrange,
-                                    size: 20,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
+
+              /// DETAILS
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 2, 6, 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      product.title,
+                      style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: textColor,
                       ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          // Replace the Add button with this:
-                          Expanded(
-                            child: ElevatedButton(
-                              onPressed: () {
-                                _showSizeSelectionBottomSheet(context, product, isDarkMode);
-                              },
-                              style: ElevatedButton.styleFrom(
-                                  backgroundColor: themeOrange,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(5),
-                                  ),
-                                  padding: const EdgeInsets.symmetric(vertical: 8)),
-                              child: Text(
-                                "Add",
-                                style: GoogleFonts.poppins(color: Colors.white, fontSize: 13),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      product.subtitle,
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: textColor,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            '₹ ${currentMrp?.toStringAsFixed(2) ?? 'N/A'}',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              color: greyTextColor,
+                              decoration: (currentSellingPrice != null && currentSellingPrice != currentMrp)
+                                  ? TextDecoration.lineThrough
+                                  : TextDecoration.none,
+                            ),
+                          ),
+                        ),
+                        if (currentSellingPrice != null && currentSellingPrice != currentMrp)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 4.0),
+                            child: Text(
+                              '₹ ${currentSellingPrice.toStringAsFixed(2)}',
+                              style: GoogleFonts.poppins(
+                                fontSize: 14,
+                                color: Colors.green,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
-                          Consumer<WishlistModel>(
-                            builder: (context, wishlist, child) {
-                              final isFavorite = wishlist.containsItem(product.selectedUnit.proId);
-                              return IconButton(
-                                onPressed: () async {
-                                  final result = await wishlist.toggleItem(product);
-                                  if (result != null) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          result
-                                              ? '${product.title} added to wishlist!'
-                                              : '${product.title} removed from wishlist!',
-                                        ),
-                                        backgroundColor: result ? Colors.blue : Colors.red,
-                                      ),
-                                    );
-                                  }
-                                },
-                                icon: Icon(
-                                  isFavorite ? Icons.favorite : Icons.favorite_border,
-                                  color: themeOrange,  // Changed from orangeColor to themeOrange
-                                ),
-                              );
-                            },
-                          )
-                        ],
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ],
