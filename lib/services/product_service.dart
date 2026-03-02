@@ -13,7 +13,8 @@ import 'package:collection/collection.dart'; // Import for firstWhereOrNull
 class ProductService extends ChangeNotifier {
   static List<Product> _allProducts =
       []; // Stores all unique products (by their generated ID)
-  static List<Map<String, String>> _allCategories = [];
+  // FIX: Changed from Map<String, String> to Map<String, dynamic>
+  static List<Map<String, dynamic>> _allCategories = [];
   static List<String> _validImageUrls =
       []; // List to store valid API image URLs
   static final Random _random =
@@ -167,13 +168,16 @@ class ProductService extends ChangeNotifier {
           productsData
               .map((data) => Product.fromJson(data as Map<String, dynamic>))
               .toList();
-      _allCategories = categoriesData.cast<Map<String, String>>();
+      
+      // FIX: Convert cached categories to Map<String, dynamic>
+      _allCategories = categoriesData
+          .map((item) => Map<String, dynamic>.from(item as Map))
+          .toList();
 
       // Populate _validImageUrls from cached products
       _validImageUrls.clear();
       for (var product in _allProducts) {
         if (isValidImageUrl(product.imageUrl)) {
-          // Use the new helper method
           _validImageUrls.add(product.imageUrl);
         }
       }
@@ -271,7 +275,7 @@ class ProductService extends ChangeNotifier {
     }
 
     for (var category in _allCategories) {
-      final String categoryId = category['cat_id']!;
+      final String categoryId = category['cat_id']!.toString();
       debugPrint(
         'ProductService: Fetching products for category: ${category['label']} (ID: $categoryId)',
       );
@@ -455,177 +459,7 @@ class ProductService extends ChangeNotifier {
     return {'products': products, 'hasMore': hasMore};
   }
 
-  // Static method to load all general products from API (type 1041)
-  // This method is now primarily for initial loading of general products,
-  // but _fetchProductsForAllCategories will be the main way to populate _allProducts.
-  // static Future<void> loadProductsFromApi() async {
-  //   debugPrint(
-  //     'ProductService: Starting loadProductsFromApi (Type 1013 only) - this now supplements _allProducts.',
-  //   );
-
-  //   final List<Product> fetchedGeneralProducts = [];
-  //   final Set<String> seenProductMainIds =
-  //       {}; // To track unique products by main ID
-
-  //   // --- Fetch general products (type=1013) ---
-  //   debugPrint('ProductService: Fetching products of type 1013...');
-  //   try {
-  //     final requestBody1013 = {
-  //       'cid': _cid,
-  //       'type': '1013',
-  //       'ln': _ln,
-  //       'lt': _lt,
-  //       'device_id': _deviceId,
-  //     };
-
-  //     final response1013 = await http
-  //         .post(
-  //           Uri.parse(_productApiUrl),
-  //           headers: {
-  //             'Content-Type': 'application/x-www-form-urlencoded',
-  //             'Accept': 'application/json',
-  //           },
-  //           body: requestBody1013,
-  //         )
-  //         .timeout(const Duration(seconds: 30));
-
-  //     debugPrint(
-  //       'ProductService: Response Status Code (type=1013): ${response1013.statusCode}',
-  //     );
-  //     debugPrint(
-  //       'ProductService: Raw Response Body (type=1013): ${response1013.body}',
-  //     );
-
-  //     if (response1013.statusCode == 200) {
-  //       final Map<String, dynamic> responseData = json.decode(
-  //         response1013.body,
-  //       );
-  //       if (responseData['status'] == 'success' &&
-  //           responseData['data'] is List) {
-  //         final List<dynamic> rawApiProductsData = responseData['data'];
-  //         for (var item in rawApiProductsData) {
-  //           debugPrint('ProductService: Processing type 1013 item: $item');
-  //           String productName = item['pro_name'] as String? ?? 'No Title';
-  //           String technicalName =
-  //               item['technical_name'] as String? ?? 'No Description';
-  //           String categoryName =
-  //               item['category_name'] as String? ?? 'Uncategorized';
-  //           String imageUrl = item['image'] as String? ?? '';
-
-  //           // Generate a stable mainProductId for the product group
-  //           String productMainId =
-  //               '${productName.replaceAll(' ', '_').toLowerCase()}_${categoryName.replaceAll(' ', '_').toLowerCase()}';
-
-  //           // Add valid image URLs to the list
-  //           if (isValidImageUrl(imageUrl)) {
-  //             _validImageUrls.add(imageUrl);
-  //           }
-
-  //           final Set<ProductSize> uniqueSizes = {};
-  //           int?
-  //           initialSelectedUnitProId; // To store the pro_id of the first size
-
-  //           if (item.containsKey('sizes') &&
-  //               item['sizes'] is List &&
-  //               (item['sizes'] as List).isNotEmpty) {
-  //             for (var sizeJson in (item['sizes'] as List)) {
-  //               try {
-  //                 final parsedSize = ProductSize.fromJson(
-  //                   sizeJson as Map<String, dynamic>,
-  //                 );
-  //                 uniqueSizes.add(parsedSize);
-  //                 if (initialSelectedUnitProId == null) {
-  //                   initialSelectedUnitProId =
-  //                       parsedSize
-  //                           .proId; // Set the first pro_id as initial selected
-  //                 }
-  //               } catch (e) {
-  //                 debugPrint(
-  //                   'ProductService: Error parsing ProductSize from JSON for product ${item['pro_name']}: $e. JSON: $sizeJson',
-  //                 );
-  //               }
-  //             }
-  //           } else {
-  //             // Handle cases where 'sizes' array is empty or missing, and 'mrp'/'selling_price' might be null
-  //             final double fallbackMrp =
-  //                 (item['mrp'] as num?)?.toDouble() ?? 0.0;
-  //             final double? fallbackSellingPrice =
-  //                 (item['selling_price'] as num?)?.toDouble();
-  //             final int fallbackProId =
-  //                 (item['pro_id'] as num?)?.toInt() ??
-  //                 0; // Use the main pro_id as fallback
-  //             debugPrint(
-  //               'ProductService: No "sizes" array for product ${item['pro_name']}. Using fallback MRP: $fallbackMrp, Selling Price: $fallbackSellingPrice, ProId: $fallbackProId',
-  //             );
-  //             final fallbackSize = ProductSize(
-  //               proId: fallbackProId,
-  //               size: 'Unit',
-  //               price: fallbackMrp,
-  //               sellingPrice: fallbackSellingPrice,
-  //             );
-  //             uniqueSizes.add(fallbackSize);
-  //             initialSelectedUnitProId = fallbackProId;
-  //           }
-  //           List<ProductSize> availableSizes = uniqueSizes.toList();
-
-  //           final product = Product(
-  //             mainProductId:
-  //                 productMainId, // Use the generated composite ID for the main Product object
-  //             title: productName,
-  //             subtitle: technicalName,
-  //             imageUrl: imageUrl,
-  //             category: categoryName,
-  //             availableSizes: availableSizes,
-  //             initialSelectedUnitProId: initialSelectedUnitProId,
-  //           );
-
-  //           // Only add if the mainProductId hasn't been seen before
-  //           if (!seenProductMainIds.contains(product.mainProductId)) {
-  //             seenProductMainIds.add(product.mainProductId);
-  //             fetchedGeneralProducts.add(product);
-  //           }
-  //         }
-  //         debugPrint(
-  //           'ProductService: Added ${fetchedGeneralProducts.length} unique products (by mainProductId) from type 1013.',
-  //         );
-  //       } else {
-  //         debugPrint(
-  //           'ProductService: API response format invalid or status not success for type=1013. Response: $responseData',
-  //         );
-  //       }
-  //     } else {
-  //       debugPrint(
-  //         'ProductService: Failed to load products for type=1013. Status code: ${response1013.statusCode}. Response: ${response1013.body}',
-  //       );
-  //     }
-  //   } on TimeoutException catch (e) {
-  //     debugPrint('ProductService: Request for type 1013 timed out: $e');
-  //   } on http.ClientException catch (e) {
-  //     debugPrint('ProductService: Network error for type 1013: $e');
-  //   } catch (e) {
-  //     debugPrint(
-  //       'ProductService: Unexpected error fetching type 1013 products: $e',
-  //     );
-  //   }
-
-  //   // This method now adds to _allProducts, but _fetchProductsForAllCategories is the main populator.
-  //   // We should ensure no duplicates if both are used.
-  //   for (var product in fetchedGeneralProducts) {
-  //     // Add to _allProducts only if it's not already present by its mainProductId
-  //     if (!_allProducts.any((p) => p.mainProductId == product.mainProductId)) {
-  //       _allProducts.add(product);
-  //     }
-  //   }
-  //   debugPrint(
-  //     'ProductService: Finished loadProductsFromApi (Type 1013). Total products in _allProducts after this: ${_allProducts.length}. Total valid image URLs: ${_validImageUrls.length}',
-  //   );
-  // }
-
-
-
-
-  /// NEW: Static method to fetch advertisement data from API (type 2014)
- /// NEW: Static method to fetch advertisement data from API (type 1020)
+  /// NEW: Static method to fetch advertisement data from API (type 1020)
 static Future<List<Ad>> fetchAds() async {
   debugPrint(
     'ProductService: Attempting to load Ads data from API via POST (type=1020): $_productApiUrl',
@@ -707,9 +541,7 @@ static Future<List<Ad>> fetchAds() async {
   
   
   
-  /// NEW: Static method to fetch Deals of the Day data from API (type 2013)
-/// NEW: Static method to fetch Deals of the Day data from API (type 1021)
-/// NEW: Static method to fetch Deals of the Day data from API (type 1021)
+  /// NEW: Static method to fetch Deals of the Day data from API (type 1021)
 static Future<List<Deal>> fetchDealsOfTheDay() async {
   debugPrint(
     'ProductService: Attempting to load Deals of the Day data from API via POST (type=1021): $_productApiUrl',
@@ -868,6 +700,7 @@ static Future<List<Deal>> fetchDealsOfTheDay() async {
     return 'assets/placeholder.png'; // Fallback to local placeholder if no valid API images are found
   }
 
+  // FIX: Updated to store as Map<String, dynamic>
   static Future<void> loadCategoriesFromApi() async {
     debugPrint(
       'ProductService: Attempting to load CATEGORIES data from API via POST (type=1014): $_productApiUrl',
@@ -933,6 +766,7 @@ static Future<List<Deal>> fetchDealsOfTheDay() async {
             String categoryName =
                 (item['category'] as String)
                     .trim(); // Trim to remove leading/trailing spaces
+            // FIX: Store as Map<String, dynamic> instead of Map<String, String>
             _allCategories.add({
               'cat_id': item['cat_id'].toString(),
               'icon':
@@ -1242,6 +1076,7 @@ static Future<List<Deal>> fetchDealsOfTheDay() async {
     );
   }
 
+  // FIX: Updated to store as Map<String, dynamic>
   static void _loadDummyCategoriesFallback() {
     debugPrint(
       'ProductService: Loading static dummy category data for fallback.',
@@ -1328,16 +1163,19 @@ static Future<List<Deal>> fetchDealsOfTheDay() async {
     }
   }
 
-  static List<Map<String, String>> getAllCategories() {
+  // FIX: Return List<Map<String, dynamic>> instead of List<Map<String, String>>
+  static List<Map<String, dynamic>> getAllCategories() {
+    // Return a copy to prevent external modification
     return List.from(_allCategories);
   }
 
+  // FIX: Updated to work with Map<String, dynamic>
   static String? getCategoryIdByName(String categoryName) {
     try {
       final category = _allCategories.firstWhere(
         (cat) => cat['label'] == categoryName,
       );
-      return category['cat_id'];
+      return category['cat_id']?.toString();
     } catch (e) {
       debugPrint(
         'ProductService: Category ID not found for name: $categoryName. Error: $e',

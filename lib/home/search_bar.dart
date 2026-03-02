@@ -753,7 +753,7 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 }
 
-// Search Results Page (keep as is)
+// Search Results Page
 class SearchResultsPage extends StatefulWidget {
   final String searchQuery;
   final List<Product> recentSearches;
@@ -776,7 +776,8 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
   Timer? _debounce;
   String? _selectedCategory;
   String? _selectedSortBy;
-  List<Map<String, String>> _categories = [];
+  // Fix: Changed from Map<String, String> to List<Map<String, dynamic>>
+  List<Map<String, dynamic>> _categories = [];
 
   @override
   void initState() {
@@ -805,8 +806,28 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
   Future<void> _loadCategories() async {
     await ProductService().initialize();
     if (mounted) {
+      // Get categories from ProductService
+      final rawCategories = ProductService.getAllCategories();
+      
+      // Create a list with "All Categories" option plus the actual categories
+      final List<Map<String, dynamic>> allCategories = [
+        {'label': 'All Categories', 'cat_id': 'all'}
+      ];
+      
+      // Add the actual categories, ensuring they're properly formatted
+      for (var category in rawCategories) {
+        // Create a new map with safe values
+        final safeCategory = <String, dynamic>{};
+        category.forEach((key, value) {
+          safeCategory[key] = value; // Keep as dynamic, don't cast to String
+        });
+        allCategories.add(safeCategory);
+      }
+      
       setState(() {
-        _categories = ProductService.getAllCategories();
+        _categories = allCategories;
+        // Set default selected category to 'All Categories'
+        _selectedCategory = 'All Categories';
       });
     }
   }
@@ -834,42 +855,41 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
       
       if (query.isNotEmpty) {
         results = ProductService.searchProductsLocally(query);
+      } else {
+        // If query is empty, show all products
+        results = ProductService.getAllProducts();
       }
 
-      if (_selectedCategory != null && _selectedCategory != 'All' && _selectedCategory != 'All Categories') {
-        results = results.where((product) => product.category == _selectedCategory).toList();
+      // Apply category filter if selected and not "All Categories"
+      if (_selectedCategory != null && 
+          _selectedCategory != 'All' && 
+          _selectedCategory != 'All Categories') {
+        results = results.where((product) {
+          // Compare product category with selected category
+          return product.category == _selectedCategory;
+        }).toList();
       }
 
+      // Apply sorting if selected
       if (_selectedSortBy != null && results.isNotEmpty) {
         results.sort((a, b) {
           final double priceA = a.sellingPricePerSelectedUnit ?? a.pricePerSelectedUnit ?? 0.0;
           final double priceB = b.sellingPricePerSelectedUnit ?? b.pricePerSelectedUnit ?? 0.0;
 
           switch (_selectedSortBy) {
-            case 'weight_asc':
-              final double weightA = a.availableSizes.firstWhere(
-                    (s) => s.size.toLowerCase().contains('kg') || s.size.toLowerCase().contains('grm'),
-                orElse: () => ProductSize(proId: 0, size: 'kg', price: 0.0),
-              ).price;
-              final double weightB = b.availableSizes.firstWhere(
-                    (s) => s.size.toLowerCase().contains('kg') || s.size.toLowerCase().contains('grm'),
-                orElse: () => ProductSize(proId: 0, size: 'kg', price: 0.0),
-              ).price;
-              return weightA.compareTo(weightB);
-            case 'weight_desc':
-              final double weightA = a.availableSizes.firstWhere(
-                    (s) => s.size.toLowerCase().contains('kg') || s.size.toLowerCase().contains('grm'),
-                orElse: () => ProductSize(proId: 0, size: 'kg', price: 0.0),
-              ).price;
-              final double weightB = b.availableSizes.firstWhere(
-                    (s) => s.size.toLowerCase().contains('kg') || s.size.toLowerCase().contains('grm'),
-                orElse: () => ProductSize(proId: 0, size: 'kg', price: 0.0),
-              ).price;
-              return weightB.compareTo(weightA);
             case 'price_asc':
               return priceA.compareTo(priceB);
             case 'price_desc':
               return priceB.compareTo(priceA);
+            case 'weight_asc':
+              // Try to get weight from size descriptions
+              final double weightA = _extractWeightFromSize(a);
+              final double weightB = _extractWeightFromSize(b);
+              return weightA.compareTo(weightB);
+            case 'weight_desc':
+              final double weightA = _extractWeightFromSize(a);
+              final double weightB = _extractWeightFromSize(b);
+              return weightB.compareTo(weightA);
             default:
               return 0;
           }
@@ -888,6 +908,39 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
       });
       debugPrint('Search error: $e');
     }
+  }
+
+  // Helper method to extract weight from product size
+  double _extractWeightFromSize(Product product) {
+    try {
+      // Try to find a size that contains weight indicators
+      final sizeWithWeight = product.availableSizes.firstWhereOrNull(
+        (s) => s.size.toLowerCase().contains('kg') || 
+               s.size.toLowerCase().contains('g') ||
+               s.size.toLowerCase().contains('ml') ||
+               s.size.toLowerCase().contains('l')
+      );
+      
+      if (sizeWithWeight != null) {
+        // Extract numeric value from size string
+        final RegExp regex = RegExp(r'(\d+(\.\d+)?)');
+        final match = regex.firstMatch(sizeWithWeight.size);
+        if (match != null) {
+          double value = double.parse(match.group(1)!);
+          // Convert to a standard unit for comparison
+          if (sizeWithWeight.size.toLowerCase().contains('kg') || 
+              sizeWithWeight.size.toLowerCase().contains('l')) {
+            return value;
+          } else if (sizeWithWeight.size.toLowerCase().contains('g') || 
+                    sizeWithWeight.size.toLowerCase().contains('ml')) {
+            return value / 1000; // Convert to kg/L
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error extracting weight: $e');
+    }
+    return 0.0;
   }
 
   @override
@@ -933,9 +986,11 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
         padding: EdgeInsets.all(horizontalPadding),
         child: Column(
           children: [
+            // Filter and Sort Row
             if (_searchResults.isNotEmpty || _isSearching)
               Row(
                 children: [
+                  // Category Dropdown
                   Expanded(
                     child: Container(
                       height: isTablet ? 50 : 40,
@@ -953,7 +1008,7 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
                                   color: Colors.grey,
                                   fontSize: isTablet ? 16 : 14)),
                           icon: Icon(Icons.arrow_drop_down,
-                              color: Color(0xffEB7720),
+                              color: const Color(0xffEB7720),
                               size: isTablet ? 24 : 20),
                           isExpanded: true,
                           style: GoogleFonts.poppins(
@@ -965,20 +1020,26 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
                               _performSearch(_searchController.text);
                             });
                           },
-                          items: [
-                            const DropdownMenuItem(value: 'All', child: Text('All Categories')),
-                            ..._categories.map((category) {
-                              return DropdownMenuItem<String>(
-                                value: category['label'],
-                                child: Text(category['label']!),
-                              );
-                            }).toList(),
-                          ],
+                          items: _categories.map((category) {
+                            // Safely get the label using toString()
+                            String label = category['label']?.toString() ?? 'Category';
+                            return DropdownMenuItem<String>(
+                              value: label,
+                              child: Text(
+                                label,
+                                style: GoogleFonts.poppins(
+                                  fontSize: isTablet ? 14 : 12,
+                                ),
+                              ),
+                            );
+                          }).toList(),
                         ),
                       ),
                     ),
                   ),
                   SizedBox(width: isTablet ? 15 : 10),
+                  
+                  // Sort Dropdown
                   Expanded(
                     child: Container(
                       height: isTablet ? 50 : 40,
@@ -996,7 +1057,7 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
                                   color: Colors.grey,
                                   fontSize: isTablet ? 16 : 14)),
                           icon: Icon(Icons.sort,
-                              color: Color(0xffEB7720),
+                              color: const Color(0xffEB7720),
                               size: isTablet ? 24 : 20),
                           isExpanded: true,
                           style: GoogleFonts.poppins(
@@ -1022,6 +1083,7 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
               ),
             SizedBox(height: verticalSpacing),
 
+            // Results Area
             if (_isSearching)
               const Expanded(
                   child: Center(child: CircularProgressIndicator(color: Color(0xffEB7720)))
@@ -1058,7 +1120,7 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
                         crossAxisCount: isTablet ? 3 : 2,
                         mainAxisSpacing: 12,
                         crossAxisSpacing: 12,
-                        childAspectRatio: 0.55,
+                        childAspectRatio: 1.0,
                       ),
                       itemCount: _searchResults.length,
                       itemBuilder: (context, index) {
@@ -1194,98 +1256,98 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
                                 ),
                             ],
                           ),
-                          Text('Unit: ${currentSelectedUnit.size}',
-                              style: GoogleFonts.poppins(
-                                  fontSize: isTablet ? 12 : 10,
-                                  color: themeOrange)),
-                          SizedBox(height: isTablet ? 10 : 8),
-                          Container(
-                            height: isTablet ? 45 : 36,
-                            padding: EdgeInsets.symmetric(horizontal: isTablet ? 10 : 8),
-                            decoration: BoxDecoration(
-                              border: Border.all(color: themeOrange),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<int>(
-                                value: currentSelectedUnit.proId,
-                                icon: Icon(Icons.keyboard_arrow_down,
-                                    color: Color(0xffEB7720),
-                                    size: isTablet ? 24 : 20),
-                                underline: const SizedBox(),
-                                isExpanded: true,
-                                style: GoogleFonts.poppins(
-                                    fontSize: isTablet ? 14 : 12,
-                                    color: Colors.black),
-                                items: effectiveAvailableSizes.map((sizeOption) => DropdownMenuItem<int>(
-                                  value: sizeOption.proId,
-                                  child: Text(sizeOption.size),
-                                )).toList(),
-                                onChanged: (int? newProId) {
-                                  if (newProId != null) {
-                                    final selectedSize = effectiveAvailableSizes.firstWhere((s) => s.proId == newProId);
-                                    product.selectedUnit = selectedSize;
-                                  }
-                                },
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      SizedBox(height: isTablet ? 10 : 8),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: ElevatedButton(
-                              onPressed: () {
-                                Provider.of<CartModel>(context, listen: false).addItem(product.copyWith());
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('${product.title} added to cart!'),
-                                    backgroundColor: Colors.green,
-                                  ),
-                                );
-                              },
-                              style: ElevatedButton.styleFrom(
-                                  backgroundColor: themeOrange,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(5),
-                                  ),
-                                  padding: EdgeInsets.symmetric(vertical: isTablet ? 10 : 8)),
-                              child: Text(
-                                "Add",
-                                style: GoogleFonts.poppins(
-                                    color: Colors.white,
-                                    fontSize: isTablet ? 14 : 13),
-                              ),
-                            ),
-                          ),
-                          Consumer<WishlistModel>(
-                            builder: (context, wishlist, child) {
-                              final isFavorite = wishlist.containsItem(product.selectedUnit.proId);
-                              return IconButton(
-                                onPressed: () async {
-                                  final result = await wishlist.toggleItem(product);
-                                  if (result != null) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          result
-                                              ? '${product.title} added to wishlist!'
-                                              : '${product.title} removed from wishlist!',
-                                        ),
-                                        backgroundColor: result ? Colors.blue : Colors.red,
-                                      ),
-                                    );
-                                  }
-                                },
-                                icon: Icon(
-                                  isFavorite ? Icons.favorite : Icons.favorite_border,
-                                  color: themeOrange,
-                                ),
-                              );
-                            },
-                          )
+                      //     Text('Unit: ${currentSelectedUnit.size}',
+                      //         style: GoogleFonts.poppins(
+                      //             fontSize: isTablet ? 12 : 10,
+                      //             color: themeOrange)),
+                      //     SizedBox(height: isTablet ? 10 : 8),
+                      //     Container(
+                      //       height: isTablet ? 45 : 36,
+                      //       padding: EdgeInsets.symmetric(horizontal: isTablet ? 10 : 8),
+                      //       decoration: BoxDecoration(
+                      //         border: Border.all(color: themeOrange),
+                      //         borderRadius: BorderRadius.circular(6),
+                      //       ),
+                      //       child: DropdownButtonHideUnderline(
+                      //         child: DropdownButton<int>(
+                      //           value: currentSelectedUnit.proId,
+                      //           icon: Icon(Icons.keyboard_arrow_down,
+                      //               color: const Color(0xffEB7720),
+                      //               size: isTablet ? 24 : 20),
+                      //           underline: const SizedBox(),
+                      //           isExpanded: true,
+                      //           style: GoogleFonts.poppins(
+                      //               fontSize: isTablet ? 14 : 12,
+                      //               color: Colors.black),
+                      //           items: effectiveAvailableSizes.map((sizeOption) => DropdownMenuItem<int>(
+                      //             value: sizeOption.proId,
+                      //             child: Text(sizeOption.size),
+                      //           )).toList(),
+                      //           onChanged: (int? newProId) {
+                      //             if (newProId != null) {
+                      //               final selectedSize = effectiveAvailableSizes.firstWhere((s) => s.proId == newProId);
+                      //               product.selectedUnit = selectedSize;
+                      //             }
+                      //           },
+                      //         ),
+                      //       ),
+                      //     ),
+                      //   ],
+                      // ),
+                      // SizedBox(height: isTablet ? 10 : 8),
+                      // Row(
+                      //   children: [
+                      //     Expanded(
+                      //       child: ElevatedButton(
+                      //         onPressed: () {
+                      //           Provider.of<CartModel>(context, listen: false).addItem(product.copyWith());
+                      //           ScaffoldMessenger.of(context).showSnackBar(
+                      //             SnackBar(
+                      //               content: Text('${product.title} added to cart!'),
+                      //               backgroundColor: Colors.green,
+                      //             ),
+                      //           );
+                      //         },
+                      //         style: ElevatedButton.styleFrom(
+                      //             backgroundColor: themeOrange,
+                      //             shape: RoundedRectangleBorder(
+                      //               borderRadius: BorderRadius.circular(5),
+                      //             ),
+                      //             padding: EdgeInsets.symmetric(vertical: isTablet ? 10 : 8)),
+                      //         child: Text(
+                      //           "Add",
+                      //           style: GoogleFonts.poppins(
+                      //               color: Colors.white,
+                      //               fontSize: isTablet ? 14 : 13),
+                      //         ),
+                      //       ),
+                      //     ),
+                      //     Consumer<WishlistModel>(
+                      //       builder: (context, wishlist, child) {
+                      //         final isFavorite = wishlist.containsItem(product.selectedUnit.proId);
+                      //         return IconButton(
+                      //           onPressed: () async {
+                      //             final result = await wishlist.toggleItem(product);
+                      //             if (result != null) {
+                      //               ScaffoldMessenger.of(context).showSnackBar(
+                      //                 SnackBar(
+                      //                   content: Text(
+                      //                     result
+                      //                         ? '${product.title} added to wishlist!'
+                      //                         : '${product.title} removed from wishlist!',
+                      //                   ),
+                      //                   backgroundColor: result ? Colors.blue : Colors.red,
+                      //                 ),
+                      //               );
+                      //             }
+                      //           },
+                      //           icon: Icon(
+                      //             isFavorite ? Icons.favorite : Icons.favorite_border,
+                      //             color: themeOrange,
+                      //           ),
+                      //         );
+                      //       },
+                       //   )
                         ],
                       ),
                     ],

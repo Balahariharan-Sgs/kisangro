@@ -58,7 +58,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   Timer? _refreshTimer;
   List<Product> _trendingItems = [];
   List<Product> _newOnKisangroItems = [];
-  List<Map<String, String>> _categories = [];
+  List<Map<String, dynamic>> _categories = [];
   bool _isLoadingCategories = true;
   List<Deal> _dealsOfTheDay = [];
   bool _isLoadingDeals = true;
@@ -175,6 +175,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
+  // In homepage.dart, find the _loadCategories method and update it:
+
   Future<void> _loadCategories() async {
     setState(() {
       _isLoadingCategories = true;
@@ -182,8 +184,25 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     try {
       await ProductService.loadCategoriesFromApi();
       if (mounted) {
+        // Get categories from ProductService and ensure they're properly typed
+        final rawCategories = ProductService.getAllCategories();
+
+        // Convert any dynamic values to strings safely
+        final List<Map<String, String>> safeCategories = [];
+
+        for (var category in rawCategories) {
+          final safeCategory = <String, String>{};
+
+          // Safely convert each key-value pair to string
+          category.forEach((key, value) {
+            safeCategory[key] = value?.toString() ?? '';
+          });
+
+          safeCategories.add(safeCategory);
+        }
+
         setState(() {
-          _categories = ProductService.getAllCategories();
+          _categories = safeCategories;
           _isLoadingCategories = false;
         });
       }
@@ -999,12 +1018,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                         context,
                                         MaterialPageRoute(
                                           builder:
-                                              (context) =>
-                                                  CategoryProductsScreen(
-                                                    categoryTitle:
-                                                        product.category,
-                                                    categoryId: categoryId,
-                                                  ),
+                                              (context) => ProductDetailPage(
+                                                product: product,
+                                              ),
                                         ),
                                       );
                                     } else {
@@ -1398,8 +1414,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                         ),
                       ],
                     )
-                     : const SizedBox.shrink(),
-                    //: const SizedBox.shrink(),
+                    : const SizedBox.shrink(),
+                //: const SizedBox.shrink(),
                 //const SizedBox(height: 8),
                 Padding(
                   padding: const EdgeInsets.symmetric(
@@ -1515,9 +1531,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                               (context) =>
                                                   CategoryProductsScreen(
                                                     categoryTitle:
-                                                        category['label']!,
+                                                        category['label']
+                                                            ?.toString() ??
+                                                        '', // Add toString()
                                                     categoryId:
-                                                        category['cat_id']!,
+                                                        category['cat_id']
+                                                            ?.toString() ??
+                                                        '', // Add toString()
                                                   ),
                                         ),
                                       );
@@ -1542,13 +1562,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                             MainAxisAlignment.center,
                                         children: [
                                           if (category['icon'] != null &&
-                                              category['icon']!.isNotEmpty &&
+                                              category['icon']
+                                                      ?.toString()
+                                                      .isNotEmpty ==
+                                                  true && // Add toString()
                                               _getEffectiveImageUrl(
-                                                category['icon']!,
+                                                category['icon']?.toString() ??
+                                                    '', // Add toString()
                                               ).startsWith('assets/'))
                                             Image.asset(
                                               _getEffectiveImageUrl(
-                                                category['icon']!,
+                                                category['icon']?.toString() ??
+                                                    '', // Add toString()
                                               ),
                                               height: 40,
                                               width: 40,
@@ -1577,7 +1602,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                               horizontal: 4.0,
                                             ),
                                             child: Text(
-                                              category['label']!,
+                                              category['label']?.toString() ??
+                                                  '', // Add toString()
                                               textAlign: TextAlign.center,
                                               style: GoogleFonts.poppins(
                                                 fontSize: 12,
@@ -1673,10 +1699,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                             MaterialPageRoute(
                                               builder:
                                                   (context) =>
-                                                      CategoryProductsScreen(
-                                                        categoryTitle:
-                                                            product.category,
-                                                        categoryId: categoryId,
+                                                      ProductDetailPage(
+                                                        product: product,
                                                       ),
                                             ),
                                           );
@@ -1798,11 +1822,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder:
-                        (context) => CategoryProductsScreen(
-                          categoryTitle: product.category,
-                          categoryId: categoryId,
-                        ),
+                    builder: (context) => ProductDetailPage(product: product),
                   ),
                 );
               }
@@ -1885,17 +1905,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                           onTap: () async {
                             final success = await wishlist.toggleItem(product);
                             if (success != null) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    success
-                                        ? 'Added to wishlist!'
-                                        : 'Removed from wishlist!',
-                                  ),
-                                  backgroundColor:
-                                      success ? Colors.blue : Colors.red,
-                                ),
-                              );
+                              // ScaffoldMessenger.of(context).showSnackBar(
+                              //   SnackBar(
+                              //     content: Text(
+                              //       success
+                              //           ? 'Added to wishlist!'
+                              //           : 'Removed from wishlist!',
+                              //     ),
+                              //     backgroundColor:
+                              //         success ? Colors.blue : Colors.red,
+                              //   ),
+                              // );
                             }
                           },
                           child: Container(

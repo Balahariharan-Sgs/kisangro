@@ -34,7 +34,7 @@ class ProductCategoriesScreen extends StatefulWidget {
 
 class _ProductCategoriesScreenState extends State<ProductCategoriesScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  List<Map<String, String>> _categories = [];
+  List<Map<String, dynamic>> _categories = [];
   bool _isLoading = true;
   int? _pressedIndex; // Track which tile is being pressed
 

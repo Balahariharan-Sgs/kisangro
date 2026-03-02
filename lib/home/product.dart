@@ -41,6 +41,7 @@ class ProductDetailPage extends StatefulWidget {
   State<ProductDetailPage> createState() => _ProductDetailPageState();
 }
 
+
 class _ProductDetailPageState extends State<ProductDetailPage> {
   int activeIndex = 0;
   ProductSize? _currentSelectedUnit;
@@ -455,6 +456,7 @@ void initState() {
     _youtubeController?.dispose();
     super.dispose();
   }
+  
 
   void _loadSimilarProducts() {
     final currentProductCategory = _currentProductForActions().category;
@@ -495,12 +497,12 @@ void initState() {
 
     try {
       await cart.addItem(_currentProductForActions(), quantity: _quantity);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${_currentProductForActions().title} (${_currentProductForActions().selectedUnit.size}) x$_quantity added to cart!'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      // ScaffoldMessenger.of(context).showSnackBar(
+      //   SnackBar(
+      //     content: Text('${_currentProductForActions().title} (${_currentProductForActions().selectedUnit.size}) x$_quantity added to cart!'),
+      //     backgroundColor: Colors.green,
+      //   ),
+      // );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -525,10 +527,8 @@ void initState() {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final cart = Provider.of<CartModel>(context, listen: false);
-    final wishlist = Provider.of<WishlistModel>(context, listen: false);
+  // This is the actual product detail content
+  Widget _buildProductDetailContent(BuildContext context) {
     final themeMode = Provider.of<ThemeModeProvider>(context).themeMode;
     final isDarkMode = themeMode == ThemeMode.dark;
 
@@ -545,30 +545,479 @@ void initState() {
     final Color quantityBorderColor = isDarkMode ? Colors.grey[600]! : Colors.grey.shade400;
     final Color orangeColor = const Color(0xffEB7720);
 
-    if (_isLoading) {
-      return Scaffold(
-        backgroundColor: backgroundColor,
-        appBar: CustomAppBar(
-          title: 'Loading...',
-          showBackButton: true,
-          showMenuButton: false,
-          showWhatsAppIcon: false,
-          isMyOrderActive: false,
-          isWishlistActive: false,
-          isNotiActive: false,
-          isDetailPage: true,
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [gradientStartColor, gradientEndColor],
         ),
-        body: Center(
-          child: CircularProgressIndicator(color: themeOrange),
+      ),
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Stack(
+            children: [
+              Container(
+                height: 200,
+                decoration: BoxDecoration(
+                  color: carouselBackgroundColor,
+                  borderRadius: BorderRadius.circular(5),
+                ),
+                child: CarouselSlider.builder(
+                  itemCount: imageAssets.length,
+                  itemBuilder: (context, index, realIndex) {
+                    final imageUrl = imageAssets[index];
+                    final bool isNetworkImage = imageUrl.startsWith('http');
+                    return isNetworkImage
+                        ? Image.network(
+                      imageUrl,
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) => Image.asset(
+                        'assets/placeholder.png',
+                        fit: BoxFit.contain,
+                      ),
+                    )
+                        : Image.asset(imageUrl, fit: BoxFit.contain);
+                  },
+                  options: CarouselOptions(
+                    height: 200,
+                    autoPlay: false,
+                    enableInfiniteScroll: false,
+                    onPageChanged: (index, reason) => setState(() => activeIndex = index),
+                  ),
+                ),
+              ),
+              // Positioned(
+              //   top: 8,
+              //   right: 8,
+              //   child: IconButton(
+              //     onPressed: () {
+              //       ScaffoldMessenger.of(context).showSnackBar(
+              //         SnackBar(content: Text('Share functionality coming soon!', style: GoogleFonts.poppins())),
+              //       );
+              //     },
+              //     icon: Icon(Icons.share, color: greyTextColor, size: 28),
+              //     splashRadius: 24,
+              //   ),
+              // ),
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Consumer<WishlistModel>(
+                  builder: (context, wishlist, child) {
+                    final Product productForActions = _currentProductForActions();
+                    final bool isFavorite = wishlist.containsItem(productForActions.selectedUnit.proId);
+                    return IconButton(
+                      onPressed: () async {
+                        final success = await wishlist.toggleItem(productForActions);
+                        if (success != null) {
+                          // ScaffoldMessenger.of(context).showSnackBar(
+                          //   SnackBar(
+                          //     content: Text(
+                          //       isFavorite
+                          //           ? '${productForActions.title} removed from wishlist!'
+                          //           : '${productForActions.title} added to wishlist!',
+                          //       style: GoogleFonts.poppins(),
+                          //     ),
+                          //     backgroundColor: isFavorite ? redColor : Colors.blue,
+                          //   ),
+                          // );
+                        }
+                      },
+                      icon: Icon(
+                        isFavorite ? Icons.favorite : Icons.favorite_border,
+                        color: isFavorite ? redColor : greyTextColor,
+                        size: 28,
+                      ),
+                      splashRadius: 24,
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 8),
+          Center(
+            child: AnimatedSmoothIndicator(
+              activeIndex: activeIndex,
+              count: imageAssets.length,
+              effect: ExpandingDotsEffect(
+                activeDotColor: primaryColor,
+                dotHeight: 5,
+                dotWidth: 8,
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(_displayTitle, style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.bold, color: textColor)),
+          Text(_displaySubtitle, style: GoogleFonts.poppins(fontSize: 14, color: subtitleColor)),
+          Text(_displayCategory, style: GoogleFonts.poppins(fontSize: 14, color: greyTextColor)),
+          const SizedBox(height: 10),
+          if (!_isOrderedProduct)
+            SizedBox(
+              height: 50,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: widget.product!.availableSizes.map((productSize) {
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8.0),
+                    child: TextButton(
+                      onPressed: () {
+                        setState(() {
+                          _currentSelectedUnit = productSize;
+                        });
+                      },
+                      style: TextButton.styleFrom(
+                        backgroundColor: _currentSelectedUnit?.proId == productSize.proId ? themeOrange : Colors.transparent,
+                        side: BorderSide(color: themeOrange),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      ),
+                      child: Text(
+                        productSize.size,
+                        style: GoogleFonts.poppins(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: _currentSelectedUnit?.proId == productSize.proId ? Colors.white : themeOrange,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            )
+          else
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Ordered Unit: ${widget.orderedProduct!.unit}',
+                  style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.bold, color: themeOrange),
+                ),
+                Text(
+                  'Quantity: ${widget.orderedProduct!.quantity}',
+                  style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.bold, color: themeOrange),
+                ),
+              ],
+            ),
+
+          if (!_isOrderedProduct)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16.0),
+              child: Row(
+                children: [
+                  Text("Quantity: ", style: GoogleFonts.poppins(fontSize: 16, color: textColor)),
+                  const SizedBox(width: 10),
+                  InkWell(
+                    onTap: _decrementQuantity,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: orangeColor,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      padding: const EdgeInsets.all(4),
+                      child: const Icon(Icons.remove, size: 16, color: Colors.white),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: quantityBorderColor),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text('$_quantity',
+                          style: GoogleFonts.poppins(fontSize: 16, color: textColor)),
+                    ),
+                  ),
+                  InkWell(
+                    onTap: _incrementQuantity,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: orangeColor,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      padding: const EdgeInsets.all(4),
+                      child: const Icon(Icons.add, size: 16, color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Text(
+                'M.R.P.: ₹ ${_displayMrpPerSelectedUnit?.toStringAsFixed(2) ?? 'N/A'}',
+                style: GoogleFonts.poppins(
+                  fontSize: 16,
+                  color: greyTextColor,
+                  decoration: (_displaySellingPricePerSelectedUnit != null && _displaySellingPricePerSelectedUnit != _displayMrpPerSelectedUnit)
+                      ? TextDecoration.lineThrough
+                      : TextDecoration.none,
+                ),
+              ),
+              if (_displaySellingPricePerSelectedUnit != null && _displaySellingPricePerSelectedUnit != _displayMrpPerSelectedUnit)
+                Padding(
+                  padding: const EdgeInsets.only(left: 8.0),
+                  child: Text(
+                    'Our Price: ₹ ${_displaySellingPricePerSelectedUnit?.toStringAsFixed(2) ?? 'N/A'}',
+                    style: GoogleFonts.poppins(fontSize: 18, color: themeOrange, fontWeight: FontWeight.bold),
+                  ),
+                ),
+            ],
+          ),
+          Text(_displayUnitSizeDescription, style: GoogleFonts.poppins(fontSize: 14, color: subtitleColor)),
+          const SizedBox(height: 8),
+          Text(
+            _isOrderedProduct
+                ? 'Total for ordered quantity: ₹ ${((_displayMrpPerSelectedUnit ?? 0.0) * widget.orderedProduct!.quantity).toStringAsFixed(2)}'
+                : 'Price for ${_currentSelectedUnit?.size ?? 'N/A'}: ₹ ${((_displaySellingPricePerSelectedUnit ?? _displayMrpPerSelectedUnit ?? 0.0) * _quantity).toStringAsFixed(2)}',
+            style: GoogleFonts.poppins(color: subtitleColor),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => _addToCart(context),
+                  style: OutlinedButton.styleFrom(
+                      foregroundColor: primaryColor,
+                      side: BorderSide(color: primaryColor),
+                      textStyle: GoogleFonts.poppins(color: primaryColor)
+                  ),
+                  child: Text('Put in Cart', style: GoogleFonts.poppins(color: primaryColor)),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () {
+                    if (_currentSelectedUnit == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Please select a unit for the product.', style: GoogleFonts.poppins())),
+                      );
+                      return;
+                    }
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => delivery(product: _currentProductForActions()),
+                      ),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(backgroundColor: primaryColor),
+                  child: Text('Buy Now', style: GoogleFonts.poppins(color: Colors.white)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Divider(color: dividerColor, thickness: 3),
+          const SizedBox(height: 20),
+          _buildHeaderSection('Cancellation Policy', isDarkMode),
+          const SizedBox(height: 8),
+          _buildDottedText(_displayCancellationPolicy, isDarkMode),
+          const SizedBox(height: 20),
+          Divider(color: dividerColor, thickness: 3),
+          const SizedBox(height: 20),
+          _buildHeaderSection('About Product', isDarkMode),
+          const SizedBox(height: 8),
+          Text(
+            '$_displaySubtitle\n\n${_apiProductData != null ? _apiProductData!['product_feature'] ?? '' : ''}',
+            style: GoogleFonts.poppins(fontSize: 14, color: subtitleColor),
+          ),
+          const SizedBox(height: 12),
+          _buildHeaderSection('Target Pests', isDarkMode),
+          const SizedBox(height: 8),
+          _buildDottedText(_displayTargetPests, isDarkMode),
+          const SizedBox(height: 12),
+          _buildHeaderSection('Target Crops', isDarkMode),
+          const SizedBox(height: 8),
+          _buildDottedText(_displayTargetCrops, isDarkMode),
+          const SizedBox(height: 12),
+          _buildHeaderSection('Dosage', isDarkMode),
+          const SizedBox(height: 8),
+          _buildDottedText(_displayDosage, isDarkMode),
+          const SizedBox(height: 12),
+          _buildHeaderSection('Available Pack', isDarkMode),
+          const SizedBox(height: 8),
+          _buildDottedText(_displayAvailablePack, isDarkMode),
+          const SizedBox(height: 15),
+          Divider(color: dividerColor, thickness: 3),
+          const SizedBox(height: 20),
+          _buildHeaderSection('Tutorial Video', isDarkMode),
+          const SizedBox(height: 8),
+          _buildVideoPlayer(isDarkMode),
+          SizedBox(height: 20,),
+          Divider(color: dividerColor, thickness: 3),
+          const SizedBox(height: 20),
+          _buildHeaderSection("Browse Similar Products", isDarkMode),
+          SizedBox(
+            height: 160,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: similarProducts.length,
+              padding: const EdgeInsets.only(left: 0, right: 12),
+              itemBuilder: (context, index) {
+                final product = similarProducts[index];
+                return Padding(
+                  padding: EdgeInsets.only(
+                    left: index == 0 ? 1.0 : 0,
+                    right: 1.0,
+                  ),
+                  child: GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => Bot(
+                            initialIndex: 0,
+                            body: ChangeNotifierProvider<Product>.value(
+                              value: product,
+                              child: ProductDetailPage(product: product),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                    child: ChangeNotifierProvider<Product>.value(
+                      value: product,
+                      child: _buildProductTile(context, product, isDarkMode, index),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 20),
+          Divider(color: dividerColor, thickness: 3),
+          const SizedBox(height: 20),
+          _buildHeaderSection("Top Selling Products", isDarkMode),
+          SizedBox(
+            height: 160,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: topSellingProducts.length,
+              padding: const EdgeInsets.only(left: 0, right: 12),
+              itemBuilder: (context, index) {
+                final product = topSellingProducts[index];
+                return Padding(
+                  padding: EdgeInsets.only(
+                    left: index == 0 ? 1.0 : 0,
+                    right: 1.0,
+                  ),
+                  child: GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => Bot(
+                            initialIndex: 0,
+                            body: ChangeNotifierProvider<Product>.value(
+                              value: product,
+                              child: ProductDetailPage(product: product),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                    child: ChangeNotifierProvider<Product>.value(
+                      value: product,
+                      child: _buildProductTile(context, product, isDarkMode, index),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final themeMode = Provider.of<ThemeModeProvider>(context).themeMode;
+    final isDarkMode = themeMode == ThemeMode.dark;
+
+    if (_isLoading) {
+      return Bot(
+        initialIndex: 0,
+        body: Scaffold(
+          backgroundColor: isDarkMode ? Colors.black : const Color(0xFFFFF8F5),
+          appBar: CustomAppBar(
+            title: 'Loading...',
+            showBackButton: true,
+            showMenuButton: false,
+            showWhatsAppIcon: false,
+            isMyOrderActive: false,
+            isWishlistActive: false,
+            isNotiActive: false,
+            isDetailPage: true,
+          ),
+          body: Center(
+            child: CircularProgressIndicator(color: themeOrange),
+          ),
         ),
       );
     }
 
     if (_errorMessage != null && !_isOrderedProduct) {
-      return Scaffold(
-        backgroundColor: backgroundColor,
+      return Bot(
+        initialIndex: 0,
+        body: Scaffold(
+          backgroundColor: isDarkMode ? Colors.black : const Color(0xFFFFF8F5),
+          appBar: CustomAppBar(
+            title: 'Error',
+            showBackButton: true,
+            showMenuButton: false,
+            showWhatsAppIcon: false,
+            isMyOrderActive: false,
+            isWishlistActive: false,
+            isNotiActive: false,
+            isDetailPage: true,
+          ),
+          body: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.error_outline, color: redColor, size: 60),
+                const SizedBox(height: 16),
+                Text(
+                  'Failed to load product details',
+                  style: GoogleFonts.poppins(fontSize: 18, color: isDarkMode ? Colors.white : Colors.black),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _errorMessage!,
+                  style: GoogleFonts.poppins(fontSize: 14, color: isDarkMode ? Colors.white70 : Colors.black87),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton(
+                  onPressed: _fetchProductDetails,
+                  style: ElevatedButton.styleFrom(backgroundColor: primaryColor),
+                  child: Text('Retry', style: GoogleFonts.poppins(color: Colors.white)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Bot(
+      initialIndex: 0,
+      body: Scaffold(
+        backgroundColor: isDarkMode ? Colors.black : const Color(0xFFFFF8F5),
         appBar: CustomAppBar(
-          title: 'Error',
+          title: _displayTitle,
           showBackButton: true,
           showMenuButton: false,
           showWhatsAppIcon: false,
@@ -577,433 +1026,7 @@ void initState() {
           isNotiActive: false,
           isDetailPage: true,
         ),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.error_outline, color: redColor, size: 60),
-              const SizedBox(height: 16),
-              Text(
-                'Failed to load product details',
-                style: GoogleFonts.poppins(fontSize: 18, color: textColor),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _errorMessage!,
-                style: GoogleFonts.poppins(fontSize: 14, color: subtitleColor),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: _fetchProductDetails,
-                style: ElevatedButton.styleFrom(backgroundColor: primaryColor),
-                child: Text('Retry', style: GoogleFonts.poppins(color: Colors.white)),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return Scaffold(
-      backgroundColor: backgroundColor,
-      appBar: CustomAppBar(
-        title: _displayTitle,
-        showBackButton: true,
-        showMenuButton: false,
-        showWhatsAppIcon: false,
-        isMyOrderActive: false,
-        isWishlistActive: false,
-        isNotiActive: false,
-        isDetailPage: true,
-      ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [gradientStartColor, gradientEndColor],
-          ),
-        ),
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            Stack(
-              children: [
-                Container(
-                  height: 200,
-                  decoration: BoxDecoration(
-                    color: carouselBackgroundColor,
-                    borderRadius: BorderRadius.circular(5),
-                  ),
-                  child: CarouselSlider.builder(
-                    itemCount: imageAssets.length,
-                    itemBuilder: (context, index, realIndex) {
-                      final imageUrl = imageAssets[index];
-                      final bool isNetworkImage = imageUrl.startsWith('http');
-                      return isNetworkImage
-                          ? Image.network(
-                        imageUrl,
-                        fit: BoxFit.contain,
-                        errorBuilder: (context, error, stackTrace) => Image.asset(
-                          'assets/placeholder.png',
-                          fit: BoxFit.contain,
-                        ),
-                      )
-                          : Image.asset(imageUrl, fit: BoxFit.contain);
-                    },
-                    options: CarouselOptions(
-                      height: 200,
-                      autoPlay: false,
-                      enableInfiniteScroll: false,
-                      onPageChanged: (index, reason) => setState(() => activeIndex = index),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: IconButton(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Share functionality coming soon!', style: GoogleFonts.poppins())),
-                      );
-                    },
-                    icon: Icon(Icons.share, color: greyTextColor, size: 28),
-                    splashRadius: 24,
-                  ),
-                ),
-                Positioned(
-                  top: 48,
-                  right: 8,
-                  child: Consumer<WishlistModel>(
-                    builder: (context, wishlist, child) {
-                      final Product productForActions = _currentProductForActions();
-                      final bool isFavorite = wishlist.containsItem(productForActions.selectedUnit.proId);
-                      return IconButton(
-                        onPressed: () async {
-                          final success = await wishlist.toggleItem(productForActions);
-                          if (success != null) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  isFavorite
-                                      ? '${productForActions.title} removed from wishlist!'
-                                      : '${productForActions.title} added to wishlist!',
-                                  style: GoogleFonts.poppins(),
-                                ),
-                                backgroundColor: isFavorite ? redColor : Colors.blue,
-                              ),
-                            );
-                          }
-                        },
-                        icon: Icon(
-                          isFavorite ? Icons.favorite : Icons.favorite_border,
-                          color: isFavorite ? redColor : greyTextColor,
-                          size: 28,
-                        ),
-                        splashRadius: 24,
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 8),
-            Center(
-              child: AnimatedSmoothIndicator(
-                activeIndex: activeIndex,
-                count: imageAssets.length,
-                effect: ExpandingDotsEffect(
-                  activeDotColor: primaryColor,
-                  dotHeight: 5,
-                  dotWidth: 8,
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(_displayTitle, style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.bold, color: textColor)),
-            Text(_displaySubtitle, style: GoogleFonts.poppins(fontSize: 14, color: subtitleColor)),
-            Text(_displayCategory, style: GoogleFonts.poppins(fontSize: 14, color: greyTextColor)),
-            const SizedBox(height: 10),
-            if (!_isOrderedProduct)
-              SizedBox(
-                height: 50,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  children: widget.product!.availableSizes.map((productSize) {
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 8.0),
-                      child: TextButton(
-                        onPressed: () {
-                          setState(() {
-                            _currentSelectedUnit = productSize;
-                          });
-                        },
-                        style: TextButton.styleFrom(
-                          backgroundColor: _currentSelectedUnit?.proId == productSize.proId ? themeOrange : Colors.transparent,
-                          side: BorderSide(color: themeOrange),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        ),
-                        child: Text(
-                          productSize.size,
-                          style: GoogleFonts.poppins(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                            color: _currentSelectedUnit?.proId == productSize.proId ? Colors.white : themeOrange,
-                          ),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              )
-            else
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Ordered Unit: ${widget.orderedProduct!.unit}',
-                    style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.bold, color: themeOrange),
-                  ),
-                  Text(
-                    'Quantity: ${widget.orderedProduct!.quantity}',
-                    style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.bold, color: themeOrange),
-                  ),
-                ],
-              ),
-
-            if (!_isOrderedProduct)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16.0),
-                child: Row(
-                  children: [
-                    Text("Quantity: ", style: GoogleFonts.poppins(fontSize: 16, color: textColor)),
-                    const SizedBox(width: 10),
-                    InkWell(
-                      onTap: _decrementQuantity,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: orangeColor,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        padding: const EdgeInsets.all(4),
-                        child: const Icon(Icons.remove, size: 16, color: Colors.white),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: quantityBorderColor),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text('$_quantity',
-                            style: GoogleFonts.poppins(fontSize: 16, color: textColor)),
-                      ),
-                    ),
-                    InkWell(
-                      onTap: _incrementQuantity,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: orangeColor,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        padding: const EdgeInsets.all(4),
-                        child: const Icon(Icons.add, size: 16, color: Colors.white),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Text(
-                  'M.R.P.: ₹ ${_displayMrpPerSelectedUnit?.toStringAsFixed(2) ?? 'N/A'}',
-                  style: GoogleFonts.poppins(
-                    fontSize: 16,
-                    color: greyTextColor,
-                    decoration: (_displaySellingPricePerSelectedUnit != null && _displaySellingPricePerSelectedUnit != _displayMrpPerSelectedUnit)
-                        ? TextDecoration.lineThrough
-                        : TextDecoration.none,
-                  ),
-                ),
-                if (_displaySellingPricePerSelectedUnit != null && _displaySellingPricePerSelectedUnit != _displayMrpPerSelectedUnit)
-                  Padding(
-                    padding: const EdgeInsets.only(left: 8.0),
-                    child: Text(
-                      'Our Price: ₹ ${_displaySellingPricePerSelectedUnit?.toStringAsFixed(2) ?? 'N/A'}',
-                      style: GoogleFonts.poppins(fontSize: 18, color: themeOrange, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-              ],
-            ),
-            Text(_displayUnitSizeDescription, style: GoogleFonts.poppins(fontSize: 14, color: subtitleColor)),
-            const SizedBox(height: 8),
-            Text(
-              _isOrderedProduct
-                  ? 'Total for ordered quantity: ₹ ${((_displayMrpPerSelectedUnit ?? 0.0) * widget.orderedProduct!.quantity).toStringAsFixed(2)}'
-                  : 'Price for ${_currentSelectedUnit?.size ?? 'N/A'}: ₹ ${((_displaySellingPricePerSelectedUnit ?? _displayMrpPerSelectedUnit ?? 0.0) * _quantity).toStringAsFixed(2)}',
-              style: GoogleFonts.poppins(color: subtitleColor),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => _addToCart(context),
-                    style: OutlinedButton.styleFrom(
-                        foregroundColor: primaryColor,
-                        side: BorderSide(color: primaryColor),
-                        textStyle: GoogleFonts.poppins(color: primaryColor)
-                    ),
-                    child: Text('Put in Cart', style: GoogleFonts.poppins(color: primaryColor)),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () {
-                      if (_currentSelectedUnit == null) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Please select a unit for the product.', style: GoogleFonts.poppins())),
-                        );
-                        return;
-                      }
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => delivery(product: _currentProductForActions()),
-                        ),
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(backgroundColor: primaryColor),
-                    child: Text('Buy Now', style: GoogleFonts.poppins(color: Colors.white)),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Divider(color: dividerColor, thickness: 3),
-            const SizedBox(height: 20),
-            _buildHeaderSection('Cancellation Policy', isDarkMode),
-            const SizedBox(height: 8),
-            _buildDottedText(_displayCancellationPolicy, isDarkMode),
-            const SizedBox(height: 20),
-            Divider(color: dividerColor, thickness: 3),
-            const SizedBox(height: 20),
-            _buildHeaderSection('About Product', isDarkMode),
-            const SizedBox(height: 8),
-            Text(
-              '$_displaySubtitle\n\n${_apiProductData != null ? _apiProductData!['product_feature'] ?? '' : ''}',
-              style: GoogleFonts.poppins(fontSize: 14, color: subtitleColor),
-            ),
-            const SizedBox(height: 12),
-            _buildHeaderSection('Target Pests', isDarkMode),
-            const SizedBox(height: 8),
-            _buildDottedText(_displayTargetPests, isDarkMode),
-            const SizedBox(height: 12),
-            _buildHeaderSection('Target Crops', isDarkMode),
-            const SizedBox(height: 8),
-            _buildDottedText(_displayTargetCrops, isDarkMode),
-            const SizedBox(height: 12),
-            _buildHeaderSection('Dosage', isDarkMode),
-            const SizedBox(height: 8),
-            _buildDottedText(_displayDosage, isDarkMode),
-            const SizedBox(height: 12),
-            _buildHeaderSection('Available Pack', isDarkMode),
-            const SizedBox(height: 8),
-            _buildDottedText(_displayAvailablePack, isDarkMode),
-            const SizedBox(height: 15),
-            Divider(color: dividerColor, thickness: 3),
-            const SizedBox(height: 20),
-            _buildHeaderSection('Tutorial Video', isDarkMode),
-            const SizedBox(height: 8),
-            _buildVideoPlayer(isDarkMode),
-            SizedBox(height: 20,),
-            Divider(color: dividerColor, thickness: 3),
-            const SizedBox(height: 20),
-            _buildHeaderSection("Browse Similar Products", isDarkMode),
-            SizedBox(
-              height: 240,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: similarProducts.length,
-                padding: const EdgeInsets.only(left: 0, right: 12),
-                itemBuilder: (context, index) {
-                  final product = similarProducts[index];
-                  return Padding(
-                    padding: EdgeInsets.only(
-                      left: index == 0 ? 1.0 : 0,
-                      right: 1.0,
-                    ),
-                    child: GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => ChangeNotifierProvider<Product>.value(
-                              value: product,
-                              child: ProductDetailPage(product: product),
-                            ),
-                          ),
-                        );
-                      },
-                      child: ChangeNotifierProvider<Product>.value(
-                        value: product,
-                        child: _buildProductTile(context, product, isDarkMode, index),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 20),
-            Divider(color: dividerColor, thickness: 3),
-            const SizedBox(height: 20),
-            _buildHeaderSection("Top Selling Products", isDarkMode),
-            SizedBox(
-              height: 240,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: topSellingProducts.length,
-                padding: const EdgeInsets.only(left: 0, right: 12),
-                itemBuilder: (context, index) {
-                  final product = topSellingProducts[index];
-                  return Padding(
-                    padding: EdgeInsets.only(
-                      left: index == 0 ? 1.0 : 0,
-                      right: 1.0,
-                    ),
-                    child: GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => ChangeNotifierProvider<Product>.value(
-                              value: product,
-                              child: ProductDetailPage(product: product),
-                            ),
-                          ),
-                        );
-                      },
-                      child: ChangeNotifierProvider<Product>.value(
-                        value: product,
-                        child: _buildProductTile(context, product, isDarkMode, index),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 20),
-          ],
-        ),
+        body: _buildProductDetailContent(context),
       ),
     );
   }
@@ -1233,34 +1256,34 @@ void initState() {
                           ),
                       ],
                     ),
-                    const SizedBox(height: 2),
-                    Text('Unit: ${currentSelectedUnit.size}',
-                        style: GoogleFonts.poppins(fontSize: 9, color: themeOrange)),
-                    const SizedBox(height: 6),
-                    Container(
-                      height: 30,
-                      padding: const EdgeInsets.symmetric(horizontal: 6),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: themeOrange),
-                        borderRadius: BorderRadius.circular(6),
-                        color: isDarkMode ? Colors.grey[800] : Colors.white,
-                      ),
-                      child: InkWell(
-                        onTap: () {
-                          _showSizeSelectionBottomSheet(context, product, isDarkMode);
-                        },
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              currentSelectedUnit.size,
-                              style: GoogleFonts.poppins(fontSize: 10, color: textColor),
-                            ),
-                            Icon(Icons.arrow_drop_down, color: textColor, size: 16),
-                          ],
-                        ),
-                      ),
-                    ),
+                    // const SizedBox(height: 2),
+                    // Text('Unit: ${currentSelectedUnit.size}',
+                    //     style: GoogleFonts.poppins(fontSize: 9, color: themeOrange)),
+                    // const SizedBox(height: 6),
+                    // Container(
+                    //   height: 30,
+                    //   padding: const EdgeInsets.symmetric(horizontal: 6),
+                    //   decoration: BoxDecoration(
+                    //     border: Border.all(color: themeOrange),
+                    //     borderRadius: BorderRadius.circular(6),
+                    //     color: isDarkMode ? Colors.grey[800] : Colors.white,
+                    //   ),
+                    //   child: InkWell(
+                    //     onTap: () {
+                    //       _showSizeSelectionBottomSheet(context, product, isDarkMode);
+                    //     },
+                    //     child: Row(
+                    //       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    //       children: [
+                    //         Text(
+                    //           currentSelectedUnit.size,
+                    //           style: GoogleFonts.poppins(fontSize: 10, color: textColor),
+                    //         ),
+                    //         Icon(Icons.arrow_drop_down, color: textColor, size: 16),
+                    //       ],
+                    //     ),
+                    //   ),
+                    // ),
                   ],
                 ),
               ),

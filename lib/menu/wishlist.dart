@@ -69,12 +69,12 @@ class _WishlistPageState extends State<WishlistPage> {
           await cart.addItem(product.copyWith());
           await wishlist.toggleItem(product);
 
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('${wishlistItem.title} moved to cart!'),
-              backgroundColor: Colors.green,
-            ),
-          );
+          // ScaffoldMessenger.of(context).showSnackBar(
+          //   SnackBar(
+          //     content: Text('${wishlistItem.title} moved to cart!'),
+          //     backgroundColor: Colors.green,
+          //   ),
+          // );
         } else {
           // If size not found, try to add with the first available size
           if (product.availableSizes.isNotEmpty) {
@@ -433,12 +433,12 @@ class _WishlistPageState extends State<WishlistPage> {
                                         initialSelectedUnitProId: wishlistItem.pro_id,
                                       );
                                       await wishlist.toggleItem(product);
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(
-                                          content: Text('${wishlistItem.title} removed from wishlist!'),
-                                          backgroundColor: Colors.red,
-                                        ),
-                                      );
+                                      // ScaffoldMessenger.of(context).showSnackBar(
+                                      //   SnackBar(
+                                      //     content: Text('${wishlistItem.title} removed from wishlist!'),
+                                      //     backgroundColor: Colors.red,
+                                      //   ),
+                                      // );
                                     },
                                     child: Icon(
                                       Icons.close,

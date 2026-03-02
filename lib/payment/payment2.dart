@@ -449,7 +449,7 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
             children: [
               Divider(thickness: 1, color: dividerColor), // Apply theme color
               Text(
-                'Step 2/3',
+                'Step 3/3',
                 style: GoogleFonts.poppins(
                     color: orangeColor, fontWeight: FontWeight.bold), // Always orange
               ),
@@ -617,8 +617,8 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
               ElevatedButton.icon(
                 onPressed: _isDetectingLocation ? null : _determinePosition,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: orangeColor, // Always orange
-                  foregroundColor: Colors.white, // Always white
+                  backgroundColor:  Colors.white, // Always orange
+                  foregroundColor: orangeColor ,// Always white
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),

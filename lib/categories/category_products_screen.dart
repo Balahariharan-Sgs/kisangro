@@ -807,16 +807,16 @@ void dispose() {
                               if (!mounted) return;
                               final success = await wishlist.toggleItem(product);
                               if (mounted && success != null) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      success
-                                          ? '${product.title} added to wishlist!'
-                                          : '${product.title} removed from wishlist!',
-                                    ),
-                                    backgroundColor: success ? Colors.blue : Colors.red,
-                                  ),
-                                );
+                                // ScaffoldMessenger.of(context).showSnackBar(
+                                //   SnackBar(
+                                //     content: Text(
+                                //       success
+                                //           ? '${product.title} added to wishlist!'
+                                //           : '${product.title} removed from wishlist!',
+                                //     ),
+                                //     backgroundColor: success ? Colors.blue : Colors.red,
+                                //   ),
+                                // );
                               }
                             },
                             child: Container(
