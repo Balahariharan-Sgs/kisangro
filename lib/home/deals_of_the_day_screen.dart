@@ -2,17 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:kisangro/home/theme_mode_provider.dart';
 import 'package:provider/provider.dart';
-import 'package:collection/collection.dart'; // For firstWhereOrNull
+import 'package:collection/collection.dart';
+import 'package:kisangro/widgets/optimized_image.dart';
+import 'package:kisangro/services/image_cache_service.dart';
+import 'package:kisangro/services/image_preloader_service.dart';
 
 import 'package:kisangro/models/product_model.dart';
-import 'package:kisangro/home/product.dart'; // ProductDetailPage
-import 'package:kisangro/models/cart_model.dart'; // CartModel
-import 'package:kisangro/models/wishlist_model.dart'; // WishlistModel
-import 'package:kisangro/services/product_service.dart'; // Import ProductService for image fallback
-import 'package:kisangro/home/product_size_selection_bottom_sheet.dart'; // Add this import
+import 'package:kisangro/home/product.dart';
+import 'package:kisangro/models/cart_model.dart';
+import 'package:kisangro/models/wishlist_model.dart';
+import 'package:kisangro/services/product_service.dart';
+import 'package:kisangro/home/product_size_selection_bottom_sheet.dart';
 
 class DealsOfTheDayScreen extends StatefulWidget {
-  final List<Product> deals; // List of deal products to display
+  final List<Product> deals;
 
   const DealsOfTheDayScreen({super.key, required this.deals});
 
@@ -21,17 +24,23 @@ class DealsOfTheDayScreen extends StatefulWidget {
 }
 
 class _DealsOfTheDayScreenState extends State<DealsOfTheDayScreen> {
-  late List<Product> _displayedDeals; // Products currently displayed (filtered/sorted)
+  late List<Product> _displayedDeals;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
-  String? _selectedSortBy; // 'price_asc', 'price_desc', 'alpha_asc', 'alpha_desc'
+  String? _selectedSortBy;
+
+  // Track preloaded images
+  final Set<String> _preloadedImageUrls = {};
 
   @override
   void initState() {
     super.initState();
-    _displayedDeals = List.from(widget.deals); // Initialize with all deals
+    _displayedDeals = List.from(widget.deals);
     _searchController.addListener(_onSearchChanged);
-    _filterAndSortProducts(); // Apply initial filter/sort if any
+    _filterAndSortProducts();
+    
+    // Preload all deal images
+    _preloadDealImages();
   }
 
   @override
@@ -39,6 +48,40 @@ class _DealsOfTheDayScreenState extends State<DealsOfTheDayScreen> {
     _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _preloadDealImages() {
+    final List<String> imageUrls = [];
+    for (final product in widget.deals) {
+      final url = _getEffectiveImageUrl(product.imageUrl);
+      if (url.startsWith('http') && !_preloadedImageUrls.contains(url)) {
+        imageUrls.add(url);
+        _preloadedImageUrls.add(url);
+      }
+    }
+    if (imageUrls.isNotEmpty) {
+      ImageCacheService().preloadImages(imageUrls);
+    }
+  }
+
+  void _preloadNextImages(int startIndex) {
+    final int endIndex = (startIndex + 10).clamp(0, _displayedDeals.length - 1);
+    final List<String> imageUrls = [];
+    
+    for (int i = startIndex; i <= endIndex; i++) {
+      if (i < _displayedDeals.length) {
+        final product = _displayedDeals[i];
+        final url = _getEffectiveImageUrl(product.imageUrl);
+        if (url.startsWith('http') && !_preloadedImageUrls.contains(url)) {
+          imageUrls.add(url);
+          _preloadedImageUrls.add(url);
+        }
+      }
+    }
+    
+    if (imageUrls.isNotEmpty) {
+      ImageCacheService().preloadImages(imageUrls);
+    }
   }
 
   void _onSearchChanged() {
@@ -49,9 +92,8 @@ class _DealsOfTheDayScreenState extends State<DealsOfTheDayScreen> {
   }
 
   void _filterAndSortProducts() {
-    List<Product> results = List.from(widget.deals); // Start with original deals
+    List<Product> results = List.from(widget.deals);
 
-    // Apply search filter
     if (_searchQuery.isNotEmpty) {
       results = results.where((product) {
         return product.title.toLowerCase().contains(_searchQuery) ||
@@ -60,10 +102,8 @@ class _DealsOfTheDayScreenState extends State<DealsOfTheDayScreen> {
       }).toList();
     }
 
-    // Apply sorting
     if (_selectedSortBy != null) {
       results.sort((a, b) {
-        // Use sellingPricePerSelectedUnit for sorting if available, otherwise fallback to pricePerSelectedUnit (MRP)
         final double priceA = a.sellingPricePerSelectedUnit ?? a.pricePerSelectedUnit ?? 0.0;
         final double priceB = b.sellingPricePerSelectedUnit ?? b.pricePerSelectedUnit ?? 0.0;
 
@@ -77,7 +117,7 @@ class _DealsOfTheDayScreenState extends State<DealsOfTheDayScreen> {
           case 'alpha_desc':
             return b.title.toLowerCase().compareTo(a.title.toLowerCase());
           default:
-            return 0; // No sorting
+            return 0;
         }
       });
     }
@@ -85,17 +125,22 @@ class _DealsOfTheDayScreenState extends State<DealsOfTheDayScreen> {
     setState(() {
       _displayedDeals = results;
     });
+    
+    // Preload first few images after filtering
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _preloadNextImages(0);
+    });
   }
 
-  // Helper function to determine the effective image URL
   String _getEffectiveImageUrl(String rawImageUrl) {
-    if (rawImageUrl.isEmpty || rawImageUrl == 'https://sgserp.in/erp/api/' || (Uri.tryParse(rawImageUrl)?.isAbsolute != true && !rawImageUrl.startsWith('assets/'))) {
-      return ProductService.getRandomValidImageUrl(); // Fallback to a random valid API image
+    if (rawImageUrl.isEmpty || 
+        rawImageUrl == 'https://sgserp.in/erp/api/' || 
+        (Uri.tryParse(rawImageUrl)?.isAbsolute != true && !rawImageUrl.startsWith('assets/'))) {
+      return ProductService.getRandomValidImageUrl();
     }
     return rawImageUrl;
   }
 
-  // Add this method to show the size selection bottom sheet
   void _showSizeSelectionBottomSheet(BuildContext context, Product product, bool isDarkMode) {
     showModalBottomSheet(
       context: context,
@@ -113,79 +158,94 @@ class _DealsOfTheDayScreenState extends State<DealsOfTheDayScreen> {
   Widget _buildSearchBarAndSort(bool isDarkMode) {
     final isTablet = MediaQuery.of(context).size.shortestSide >= 600;
 
-    // Define colors based on theme
     final Color searchBarFillColor = isDarkMode ? Colors.grey[800]! : Colors.white;
     final Color hintTextColor = isDarkMode ? Colors.white70 : Colors.grey[600]!;
     final Color prefixIconColor = isDarkMode ? Colors.white70 : const Color(0xffEB7720);
     final Color suffixIconColor = isDarkMode ? Colors.white70 : Colors.grey;
     final Color textColor = isDarkMode ? Colors.white : Colors.black;
     final Color dropdownFillColor = isDarkMode ? Colors.grey[800]! : Colors.white;
-    final Color dropdownBorderColor = isDarkMode ? Colors.grey[700]! : Colors.transparent; // Transparent for no border in light mode
+    final Color dropdownBorderColor = isDarkMode ? Colors.grey[700]! : Colors.transparent;
 
     return Padding(
       padding: const EdgeInsets.all(12.0),
       child: Column(
         children: [
-          // Search Bar
           TextField(
             controller: _searchController,
             decoration: InputDecoration(
               hintText: 'Search deals...',
-              hintStyle: GoogleFonts.poppins(color: hintTextColor), // Apply theme color
-              prefixIcon: Icon(Icons.search, color: prefixIconColor, size: isTablet ? 28 : 24), // Apply theme color
+              hintStyle: GoogleFonts.poppins(color: hintTextColor),
+              prefixIcon: Icon(Icons.search, color: prefixIconColor, size: isTablet ? 28 : 24),
               suffixIcon: _searchController.text.isNotEmpty
                   ? IconButton(
-                icon: Icon(Icons.clear, color: suffixIconColor, size: isTablet ? 28 : 24), // Apply theme color
-                onPressed: () {
-                  _searchController.clear();
-                  _filterAndSortProducts();
-                },
-              )
+                      icon: Icon(Icons.clear, color: suffixIconColor, size: isTablet ? 28 : 24),
+                      onPressed: () {
+                        _searchController.clear();
+                        _filterAndSortProducts();
+                      },
+                    )
                   : null,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide.none,
               ),
               filled: true,
-              fillColor: searchBarFillColor, // Apply theme color
+              fillColor: searchBarFillColor,
               contentPadding: EdgeInsets.symmetric(vertical: isTablet ? 20.0 : 12.0, horizontal: 16.0),
             ),
-            style: GoogleFonts.poppins(fontSize: isTablet ? 18 : 14, color: textColor), // Apply theme color
+            style: GoogleFonts.poppins(fontSize: isTablet ? 18 : 14, color: textColor),
           ),
           const SizedBox(height: 10),
-          // Sort By Dropdown (Smaller and to the right)
           Align(
-            alignment: Alignment.centerRight, // Align to the right
+            alignment: Alignment.centerRight,
             child: SizedBox(
-              width: isTablet ? 200 : 160, // Smaller width for dropdown
+              width: isTablet ? 200 : 160,
               child: DropdownButtonFormField<String>(
                 value: _selectedSortBy,
-                hint: Text('Sort By', style: GoogleFonts.poppins(fontSize: isTablet ? 14 : 12, color: hintTextColor)), // Apply theme color
+                hint: Text(
+                  'Sort By',
+                  style: GoogleFonts.poppins(fontSize: isTablet ? 14 : 12, color: hintTextColor),
+                ),
                 decoration: InputDecoration(
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: dropdownBorderColor), // Apply theme color
+                    borderSide: BorderSide(color: dropdownBorderColor),
                   ),
                   filled: true,
-                  fillColor: dropdownFillColor, // Apply theme color
-                  contentPadding: EdgeInsets.symmetric(vertical: isTablet ? 12.0 : 8.0, horizontal: 12.0), // Smaller padding
+                  fillColor: dropdownFillColor,
+                  contentPadding: EdgeInsets.symmetric(vertical: isTablet ? 12.0 : 8.0, horizontal: 12.0),
                 ),
                 items: [
-                  DropdownMenuItem(value: null, child: Text('Relevance', style: GoogleFonts.poppins(color: textColor))), // Apply theme color
-                  DropdownMenuItem(value: 'price_high_to_low', child: Text('Price: High to Low', style: GoogleFonts.poppins(color: textColor))), // Apply theme color
-                  DropdownMenuItem(value: 'price_low_to_high', child: Text('Price: Low to High', style: GoogleFonts.poppins(color: textColor))), // Apply theme color
-                  DropdownMenuItem(value: 'alpha_asc', child: Text('Name: A to Z', style: GoogleFonts.poppins(color: textColor))), // Apply theme color
-                  DropdownMenuItem(value: 'alpha_desc', child: Text('Name: Z to A', style: GoogleFonts.poppins(color: textColor))), // Apply theme color
+                  DropdownMenuItem(
+                    value: null,
+                    child: Text('Relevance', style: GoogleFonts.poppins(color: textColor)),
+                  ),
+                  DropdownMenuItem(
+                    value: 'price_high_to_low',
+                    child: Text('Price: High to Low', style: GoogleFonts.poppins(color: textColor)),
+                  ),
+                  DropdownMenuItem(
+                    value: 'price_low_to_high',
+                    child: Text('Price: Low to High', style: GoogleFonts.poppins(color: textColor)),
+                  ),
+                  DropdownMenuItem(
+                    value: 'alpha_asc',
+                    child: Text('Name: A to Z', style: GoogleFonts.poppins(color: textColor)),
+                  ),
+                  DropdownMenuItem(
+                    value: 'alpha_desc',
+                    child: Text('Name: Z to A', style: GoogleFonts.poppins(color: textColor)),
+                  ),
                 ],
                 onChanged: (value) {
                   setState(() {
                     _selectedSortBy = value;
-                    _filterAndSortProducts(); // Re-run filter/sort with new option
+                    _filterAndSortProducts();
                   });
                 },
-                style: GoogleFonts.poppins(fontSize: isTablet ? 14 : 12, color: textColor), // Apply theme color
-                iconSize: isTablet ? 24 : 20, // Smaller icon size
-                dropdownColor: dropdownFillColor, // Set dropdown menu background color
+                style: GoogleFonts.poppins(fontSize: isTablet ? 14 : 12, color: textColor),
+                iconSize: isTablet ? 24 : 20,
+                dropdownColor: dropdownFillColor,
               ),
             ),
           ),
@@ -196,11 +256,10 @@ class _DealsOfTheDayScreenState extends State<DealsOfTheDayScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final Color orange = const Color(0xffEB7720); // Your app's theme color
+    final Color orange = const Color(0xffEB7720);
     final themeMode = Provider.of<ThemeModeProvider>(context).themeMode;
     final isDarkMode = themeMode == ThemeMode.dark;
 
-    // Define colors based on theme
     final Color backgroundColor = isDarkMode ? Colors.black : const Color(0xFFFFF7F1);
     final Color gradientStartColor = isDarkMode ? Colors.black : const Color(0xffFFD9BD);
     final Color gradientEndColor = isDarkMode ? Colors.black : const Color(0xffFFFFFF);
@@ -225,40 +284,53 @@ class _DealsOfTheDayScreenState extends State<DealsOfTheDayScreen> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [gradientStartColor, gradientEndColor], // Consistent theme gradient
+            colors: [gradientStartColor, gradientEndColor],
           ),
         ),
         child: Column(
           children: [
-            _buildSearchBarAndSort(isDarkMode), // Add search bar and sort dropdown, pass isDarkMode
+            _buildSearchBarAndSort(isDarkMode),
             Expanded(
               child: _displayedDeals.isEmpty
                   ? Center(
-                child: Text(
-                  _searchQuery.isNotEmpty
-                      ? 'No deals found matching "${_searchController.text}".'
-                      : 'No deals available today.',
-                  style: GoogleFonts.poppins(fontSize: 16, color: infoTextColor), // Apply theme color
-                  textAlign: TextAlign.center,
-                ),
-              )
-                  : GridView.builder(
-                padding: const EdgeInsets.all(15.0),
-                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 200, // Max width for items
-                  crossAxisSpacing: 15,
-                  mainAxisSpacing: 15,
-                  mainAxisExtent: 320, // Explicitly set height for each tile to avoid overflow
-                ),
-                itemCount: _displayedDeals.length,
-                itemBuilder: (context, index) {
-                  final product = _displayedDeals[index];
-                  return ChangeNotifierProvider<Product>.value( // Wrap with Provider
-                    value: product,
-                    child: _buildProductTile(context, product, isDarkMode), // Pass isDarkMode
-                  );
-                },
-              ),
+                      child: Text(
+                        _searchQuery.isNotEmpty
+                            ? 'No deals found matching "${_searchController.text}".'
+                            : 'No deals available today.',
+                        style: GoogleFonts.poppins(fontSize: 16, color: infoTextColor),
+                        textAlign: TextAlign.center,
+                      ),
+                    )
+                  : NotificationListener<ScrollNotification>(
+                      onNotification: (scrollInfo) {
+                        if (scrollInfo.metrics.pixels >=
+                            scrollInfo.metrics.maxScrollExtent * 0.7) {
+                          final int currentIndex = (scrollInfo.metrics.pixels /
+                                  scrollInfo.metrics.maxScrollExtent *
+                                  _displayedDeals.length)
+                              .toInt();
+                          _preloadNextImages(currentIndex);
+                        }
+                        return true;
+                      },
+                      child: GridView.builder(
+                        padding: const EdgeInsets.all(15.0),
+                        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: 200,
+                          crossAxisSpacing: 15,
+                          mainAxisSpacing: 15,
+                          mainAxisExtent: 320,
+                        ),
+                        itemCount: _displayedDeals.length,
+                        itemBuilder: (context, index) {
+                          final product = _displayedDeals[index];
+                          return ChangeNotifierProvider<Product>.value(
+                            value: product,
+                            child: _buildProductTile(context, product, isDarkMode),
+                          );
+                        },
+                      ),
+                    ),
             ),
           ],
         ),
@@ -266,9 +338,8 @@ class _DealsOfTheDayScreenState extends State<DealsOfTheDayScreen> {
     );
   }
 
-  // Reusing the _buildProductTile logic from homepage.dart for consistency
   Widget _buildProductTile(BuildContext context, Product product, bool isDarkMode) {
-    final Color themeOrange = const Color(0xffEB7720); // Your app's theme color
+    final Color themeOrange = const Color(0xffEB7720);
     final Color cardBackgroundColor = isDarkMode ? Colors.grey[900]! : Colors.white;
     final Color borderColor = isDarkMode ? Colors.grey[700]! : Colors.grey.shade300;
     final Color textColor = isDarkMode ? Colors.white : Colors.black;
@@ -276,16 +347,14 @@ class _DealsOfTheDayScreenState extends State<DealsOfTheDayScreen> {
     final Color boxShadowColor = isDarkMode ? Colors.transparent : Colors.black12;
     final Color dividerColor = isDarkMode ? Colors.grey[700]! : Colors.grey;
 
-    return Consumer<Product>( // Consume the product to react to its selectedUnit changes
+    return Consumer<Product>(
       builder: (context, product, child) {
-        // Ensure availableSizes is never empty to prevent errors.
         final List<ProductSize> effectiveAvailableSizes = product.availableSizes.isNotEmpty
             ? product.availableSizes
             : [ProductSize(proId: 0, size: 'Unit', price: product.pricePerSelectedUnit ?? 0.0, sellingPrice: product.sellingPricePerSelectedUnit)];
 
-        // Resolve the selected unit for display
         ProductSize currentSelectedUnit = effectiveAvailableSizes.firstWhere(
-              (sizeOption) => sizeOption.proId == product.selectedUnit.proId,
+          (sizeOption) => sizeOption.proId == product.selectedUnit.proId,
           orElse: () => effectiveAvailableSizes.first,
         );
 
@@ -295,11 +364,11 @@ class _DealsOfTheDayScreenState extends State<DealsOfTheDayScreen> {
         return Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: cardBackgroundColor, // Apply theme color
-            border: Border.all(color: borderColor), // Apply theme color
+            color: cardBackgroundColor,
+            border: Border.all(color: borderColor),
             borderRadius: BorderRadius.circular(10),
             boxShadow: [
-              BoxShadow(color: boxShadowColor, blurRadius: 6), // Apply theme color
+              BoxShadow(color: boxShadowColor, blurRadius: 6),
             ],
           ),
           child: Column(
@@ -324,31 +393,25 @@ class _DealsOfTheDayScreenState extends State<DealsOfTheDayScreen> {
                   child: Center(
                     child: AspectRatio(
                       aspectRatio: 1.0,
-                      child: _getEffectiveImageUrl(product.imageUrl).startsWith('http')
-                          ? Image.network(
-                        _getEffectiveImageUrl(product.imageUrl),
+                      child: OptimizedImage(
+                        imageUrl: _getEffectiveImageUrl(product.imageUrl),
                         fit: BoxFit.contain,
-                        errorBuilder: (context, error, stackTrace) => Image.asset(
-                          'assets/placeholder.png', // Fallback to local placeholder if network image fails
-                          fit: BoxFit.contain,
-                        ),
-                      )
-                          : Image.asset(
-                        _getEffectiveImageUrl(product.imageUrl), // This will now use the dynamic fallback if rawImageUrl is empty
-                        fit: BoxFit.contain,
+                        placeholderAsset: 'assets/placeholder.png',
+                        width: 100,
+                        height: 100,
                       ),
                     ),
                   ),
                 ),
               ),
-              Divider(color: dividerColor), // Apply theme color
+              Divider(color: dividerColor),
               const SizedBox(height: 3),
               Text(
                 product.title,
                 style: GoogleFonts.poppins(
                   fontWeight: FontWeight.bold,
                   fontSize: 14,
-                  color: textColor, // Apply theme color
+                  color: textColor,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -356,20 +419,18 @@ class _DealsOfTheDayScreenState extends State<DealsOfTheDayScreen> {
               const SizedBox(height: 2),
               Text(
                 product.subtitle,
-                style: GoogleFonts.poppins(fontSize: 12, color: textColor), // Apply theme color
+                style: GoogleFonts.poppins(fontSize: 12, color: textColor),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-              // Display MRP and Selling Price for the tile
               Row(
                 children: [
-                  // Use Flexible to prevent overflow if prices are long
                   Flexible(
                     child: Text(
                       'M.R.P.: ₹ ${currentMrp?.toStringAsFixed(2) ?? 'N/A'}',
                       style: GoogleFonts.poppins(
                         fontSize: 12,
-                        color: greyTextColor, // Apply theme color
+                        color: greyTextColor,
                         decoration: (currentSellingPrice != null && currentSellingPrice != currentMrp)
                             ? TextDecoration.lineThrough
                             : TextDecoration.none,
@@ -384,7 +445,11 @@ class _DealsOfTheDayScreenState extends State<DealsOfTheDayScreen> {
                         padding: const EdgeInsets.only(left: 4.0),
                         child: Text(
                           'Our Price: ₹ ${currentSellingPrice.toStringAsFixed(2)}',
-                          style: GoogleFonts.poppins(fontSize: 14, color: Colors.green, fontWeight: FontWeight.w600),
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            color: Colors.green,
+                            fontWeight: FontWeight.w600,
+                          ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -393,14 +458,13 @@ class _DealsOfTheDayScreenState extends State<DealsOfTheDayScreen> {
                 ],
               ),
               const SizedBox(height: 5),
-              // Replace the dropdown with a button that opens the bottom sheet
               Container(
                 height: 36,
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 decoration: BoxDecoration(
                   border: Border.all(color: themeOrange),
                   borderRadius: BorderRadius.circular(6),
-                  color: isDarkMode ? Colors.grey[800] : Colors.white, // Apply theme color
+                  color: isDarkMode ? Colors.grey[800] : Colors.white,
                 ),
                 child: InkWell(
                   onTap: () {
@@ -428,18 +492,18 @@ class _DealsOfTheDayScreenState extends State<DealsOfTheDayScreen> {
               const SizedBox(height: 5),
               Row(
                 children: [
-                  // Replace the Add button with one that opens the bottom sheet
                   Expanded(
                     child: ElevatedButton(
                       onPressed: () {
                         _showSizeSelectionBottomSheet(context, product, isDarkMode);
                       },
                       style: ElevatedButton.styleFrom(
-                          backgroundColor: themeOrange,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 8)),
+                        backgroundColor: themeOrange,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 8),
+                      ),
                       child: Text(
                         "Add",
                         style: GoogleFonts.poppins(

@@ -7,7 +7,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:kisangro/home/categories.dart';
 import 'package:kisangro/home/product.dart';
-// import 'package:kisangro/home/product.dart';
 import 'package:kisangro/home/theme_mode_provider.dart';
 import 'package:kisangro/login/splashscreen.dart';
 import 'package:kisangro/models/kyc_business_model.dart';
@@ -36,6 +35,9 @@ import 'package:collection/collection.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:kisangro/home/product_size_selection_bottom_sheet.dart';
+import 'package:kisangro/widgets/optimized_image.dart';
+import 'package:kisangro/services/image_cache_service.dart';
+import 'package:kisangro/services/image_preloader_service.dart';
 
 import '../categories/category_products_screen.dart';
 import '../common/common_app_bar.dart';
@@ -75,19 +77,33 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   final TextEditingController _reviewController = TextEditingController();
   static const int maxChars = 100;
 
-  // FIXED: Using the same working method as product.dart
-  // FIXED: Using the same working method as product.dart
+  // Track preloaded images to avoid duplicate preloading
+  final Set<String> _preloadedImageUrls = {};
+
+  // FIXED: Enhanced image URL handling for API images
   String _getEffectiveImageUrl(String rawImageUrl) {
     if (rawImageUrl.isEmpty ||
         rawImageUrl == 'https://sgserp.in/erp/api/' ||
         (Uri.tryParse(rawImageUrl)?.isAbsolute != true &&
             !rawImageUrl.startsWith('assets/'))) {
-      return ProductService.getRandomValidImageUrl(); // Use a random valid API image or local placeholder
+      return ProductService.getRandomValidImageUrl();
     }
 
-    // Handle URLs without extensions (like the banner URL)
+    // Handle URLs without extensions
     if (rawImageUrl.startsWith('http') && !rawImageUrl.contains('.')) {
-      return rawImageUrl + '.jpg'; // Add .jpg extension as fallback
+      return rawImageUrl + '.jpg';
+    }
+
+    // Handle relative paths from API
+    if (rawImageUrl.startsWith('/') || 
+        (rawImageUrl.isNotEmpty && 
+         !rawImageUrl.startsWith('http') && 
+         !rawImageUrl.startsWith('assets/'))) {
+      // Remove leading slash if present to avoid double slashes
+      String cleanPath = rawImageUrl.startsWith('/') 
+          ? rawImageUrl.substring(1) 
+          : rawImageUrl;
+      return 'https://sgserp.in/erp/api/$cleanPath';
     }
 
     return rawImageUrl;
@@ -111,7 +127,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  @override
   void _showSizeSelectionBottomSheet(
     BuildContext context,
     Product product,
@@ -169,13 +184,40 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         }
       });
 
+      // Preload images for trending and new items
+      _preloadSectionImages();
+
       await _loadCategories();
       await _fetchAds();
       await _fetchDealsOfTheDay();
     }
   }
 
-  // In homepage.dart, find the _loadCategories method and update it:
+  void _preloadSectionImages() {
+    final List<String> imageUrls = [];
+    
+    // Collect trending items images
+    for (final product in _trendingItems) {
+      final url = _getEffectiveImageUrl(product.imageUrl);
+      if (url.startsWith('http') && !_preloadedImageUrls.contains(url)) {
+        imageUrls.add(url);
+        _preloadedImageUrls.add(url);
+      }
+    }
+    
+    // Collect new items images
+    for (final product in _newOnKisangroItems) {
+      final url = _getEffectiveImageUrl(product.imageUrl);
+      if (url.startsWith('http') && !_preloadedImageUrls.contains(url)) {
+        imageUrls.add(url);
+        _preloadedImageUrls.add(url);
+      }
+    }
+    
+    if (imageUrls.isNotEmpty) {
+      ImageCacheService().preloadImages(imageUrls);
+    }
+  }
 
   Future<void> _loadCategories() async {
     setState(() {
@@ -184,16 +226,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     try {
       await ProductService.loadCategoriesFromApi();
       if (mounted) {
-        // Get categories from ProductService and ensure they're properly typed
         final rawCategories = ProductService.getAllCategories();
 
-        // Convert any dynamic values to strings safely
         final List<Map<String, String>> safeCategories = [];
 
         for (var category in rawCategories) {
           final safeCategory = <String, String>{};
 
-          // Safely convert each key-value pair to string
           category.forEach((key, value) {
             safeCategory[key] = value?.toString() ?? '';
           });
@@ -227,6 +266,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           _ads = fetchedAds;
           _isLoadingAds = false;
         });
+        
+        // Preload ad images
+        final List<String> adUrls = [];
+        for (final ad in fetchedAds) {
+          if (ad.banner.startsWith('http') && !_preloadedImageUrls.contains(ad.banner)) {
+            adUrls.add(ad.banner);
+            _preloadedImageUrls.add(ad.banner);
+          }
+        }
+        if (adUrls.isNotEmpty) {
+          ImageCacheService().preloadImages(adUrls);
+        }
       }
     } catch (e) {
       debugPrint('Error fetching ads in HomeScreen: $e');
@@ -249,6 +300,21 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           _dealsOfTheDay = fetchedDeals;
           _isLoadingDeals = false;
         });
+        
+        // Preload deal product images
+        final List<String> dealImageUrls = [];
+        for (final deal in fetchedDeals) {
+          String productImageUrl = deal.productImg;
+          if (productImageUrl.isNotEmpty && productImageUrl.startsWith('http')) {
+            if (!_preloadedImageUrls.contains(productImageUrl)) {
+              dealImageUrls.add(productImageUrl);
+              _preloadedImageUrls.add(productImageUrl);
+            }
+          }
+        }
+        if (dealImageUrls.isNotEmpty) {
+          ImageCacheService().preloadImages(dealImageUrls);
+        }
       }
     } catch (e) {
       debugPrint('Error fetching deals of the day in HomeScreen: $e');
@@ -295,7 +361,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           (context) => LogoutConfirmationDialog(
             onCancel: () => Navigator.of(context).pop(),
             onLogout: () async {
-              // Clear KYC data providers
               try {
                 final kycBusinessDataProvider =
                     Provider.of<KycBusinessDataProvider>(
@@ -315,10 +380,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 debugPrint('Error clearing KYC data on logout: $e');
               }
 
-              // Clear SharedPreferences
               final prefs = await SharedPreferences.getInstance();
-              await prefs
-                  .clear(); // This will remove all flags including kyc_completed
+              await prefs.clear();
 
               Navigator.pushAndRemoveUntil(
                 context,
@@ -550,11 +613,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     );
   }
 
-  // Helper method to get category ID from product
   String _getCategoryIdFromProduct(Product product) {
-    // First check if the product has a valid category that exists in our categories list
     if (product.category.isNotEmpty) {
-      // Try to find the category in our loaded categories
       final category = _categories.firstWhereOrNull(
         (cat) => cat['label']?.toLowerCase() == product.category.toLowerCase(),
       );
@@ -563,7 +623,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         return category['cat_id'] ?? '';
       }
 
-      // Try to find from ProductService
       final allCategories = ProductService.getAllCategories();
       final foundCategory = allCategories.firstWhereOrNull(
         (cat) => cat['label']?.toLowerCase() == product.category.toLowerCase(),
@@ -574,13 +633,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       }
     }
 
-    // If product has mainProductId that might contain category info
     if (product.mainProductId.isNotEmpty) {
-      // Try to extract category info from mainProductId if it follows a pattern
-      // This depends on your data structure
       final parts = product.mainProductId.split('_');
       if (parts.length > 1) {
-        // Check if the first part matches any category ID
         final potentialCategoryId = parts[0];
         final categoryExists = _categories.any(
           (cat) => cat['cat_id'] == potentialCategoryId,
@@ -591,7 +646,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       }
     }
 
-    // Default fallback - return empty string
     debugPrint(
       'No category found for product: ${product.title}, category: ${product.category}',
     );
@@ -913,30 +967,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                       ),
                                       child: ClipRRect(
                                         borderRadius: BorderRadius.circular(4),
-                                        child: Image.network(
-                                          ad.banner,
+                                        child: OptimizedImage(
+                                          imageUrl: ad.banner,
                                           fit: BoxFit.cover,
-                                          errorBuilder: (
-                                            context,
-                                            error,
-                                            stackTrace,
-                                          ) {
-                                            return Image.asset(
-                                              'assets/placeholder.png',
-                                              fit: BoxFit.cover,
-                                            );
-                                          },
-                                          loadingBuilder: (
-                                            context,
-                                            child,
-                                            loadingProgress,
-                                          ) {
-                                            if (loadingProgress == null)
-                                              return child;
-                                            return _buildShimmerAdTile(
-                                              isDarkMode,
-                                            );
-                                          },
+                                          placeholderAsset: 'assets/placeholder.png',
+                                          width: double.infinity,
+                                          height: 180,
                                         ),
                                       ),
                                     );
@@ -1013,7 +1049,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                     final categoryId =
                                         _getCategoryIdFromProduct(product);
                                     if (categoryId.isNotEmpty) {
-                                      // Navigate to category products screen
                                       Navigator.push(
                                         context,
                                         MaterialPageRoute(
@@ -1023,16 +1058,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                               ),
                                         ),
                                       );
-                                    } else {
-                                      // Fallback to product detail if category not found
-                                      // Navigator.push(
-                                      //   context,
-                                      //   MaterialPageRoute(
-                                      //     builder: (context) => ProductDetailPage(
-                                      //       product: product,
-                                      //     ),
-                                      //   ),
-                                      // );
                                     }
                                   },
                                   child: ChangeNotifierProvider<Product>.value(
@@ -1180,19 +1205,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                           itemBuilder: (context, index) {
                                             final deal = _dealsOfTheDay[index];
 
-                                            // Handle product image with error handling
-                                            String productImageUrl =
-                                                deal.productImg;
+                                            // FIXED: Handle product image with proper URL construction
+                                            String productImageUrl = deal.productImg;
                                             if (productImageUrl.isEmpty) {
-                                              productImageUrl =
-                                                  'assets/placeholder.png';
-                                            } else if (!productImageUrl
-                                                    .startsWith('http') &&
-                                                !productImageUrl.startsWith(
-                                                  'assets/',
-                                                )) {
-                                              productImageUrl =
-                                                  'assets/placeholder.png';
+                                              productImageUrl = 'assets/placeholder.png';
+                                            } else if (!productImageUrl.startsWith('http') && 
+                                                       !productImageUrl.startsWith('assets/')) {
+                                              // If it's a relative path from API, construct the full URL
+                                              // Remove leading slash if present to avoid double slashes
+                                              String cleanPath = productImageUrl.startsWith('/') 
+                                                  ? productImageUrl.substring(1) 
+                                                  : productImageUrl;
+                                              productImageUrl = 'https://sgserp.in/erp/api/$cleanPath';
                                             }
 
                                             final tempProduct = Product(
@@ -1200,7 +1224,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                                   deal.proId.toString(),
                                               title: deal.productName,
                                               subtitle: deal.dealName,
-                                              imageUrl: productImageUrl,
+                                              imageUrl: productImageUrl, // Use the properly formatted URL
                                               category: 'Deals',
                                               availableSizes: [
                                                 ProductSize(
@@ -1251,78 +1275,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                                       child: Center(
                                                         child: AspectRatio(
                                                           aspectRatio: 1.0,
-                                                          child:
-                                                              productImageUrl
-                                                                      .startsWith(
-                                                                        'http',
-                                                                      )
-                                                                  ? Image.network(
-                                                                    productImageUrl,
-                                                                    fit:
-                                                                        BoxFit
-                                                                            .contain,
-                                                                    errorBuilder: (
-                                                                      context,
-                                                                      error,
-                                                                      stackTrace,
-                                                                    ) {
-                                                                      debugPrint(
-                                                                        'Error loading deal product image: $error',
-                                                                      );
-                                                                      return Image.asset(
-                                                                        'assets/placeholder.png',
-                                                                        fit:
-                                                                            BoxFit.contain,
-                                                                      );
-                                                                    },
-                                                                    loadingBuilder: (
-                                                                      context,
-                                                                      child,
-                                                                      loadingProgress,
-                                                                    ) {
-                                                                      if (loadingProgress ==
-                                                                          null)
-                                                                        return child;
-                                                                      return Center(
-                                                                        child: SizedBox(
-                                                                          width:
-                                                                              20,
-                                                                          height:
-                                                                              20,
-                                                                          child: CircularProgressIndicator(
-                                                                            strokeWidth:
-                                                                                2,
-                                                                            value:
-                                                                                loadingProgress.expectedTotalBytes !=
-                                                                                        null
-                                                                                    ? loadingProgress.cumulativeBytesLoaded /
-                                                                                        loadingProgress.expectedTotalBytes!
-                                                                                    : null,
-                                                                            color: const Color(
-                                                                              0xffEB7720,
-                                                                            ),
-                                                                          ),
-                                                                        ),
-                                                                      );
-                                                                    },
-                                                                  )
-                                                                  : Image.asset(
-                                                                    productImageUrl,
-                                                                    fit:
-                                                                        BoxFit
-                                                                            .contain,
-                                                                    errorBuilder: (
-                                                                      context,
-                                                                      error,
-                                                                      stackTrace,
-                                                                    ) {
-                                                                      return Image.asset(
-                                                                        'assets/placeholder.png',
-                                                                        fit:
-                                                                            BoxFit.contain,
-                                                                      );
-                                                                    },
-                                                                  ),
+                                                          child: OptimizedImage(
+                                                            imageUrl: productImageUrl,
+                                                            fit: BoxFit.contain,
+                                                            placeholderAsset: 'assets/placeholder.png',
+                                                            width: double.infinity,
+                                                            height: 80,
+                                                          ),
                                                         ),
                                                       ),
                                                     ),
@@ -1415,8 +1374,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                       ],
                     )
                     : const SizedBox.shrink(),
-                //: const SizedBox.shrink(),
-                //const SizedBox(height: 8),
                 Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 12,
@@ -1533,11 +1490,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                                     categoryTitle:
                                                         category['label']
                                                             ?.toString() ??
-                                                        '', // Add toString()
+                                                        '',
                                                     categoryId:
                                                         category['cat_id']
                                                             ?.toString() ??
-                                                        '', // Add toString()
+                                                        '',
                                                   ),
                                         ),
                                       );
@@ -1565,15 +1522,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                               category['icon']
                                                       ?.toString()
                                                       .isNotEmpty ==
-                                                  true && // Add toString()
+                                                  true &&
                                               _getEffectiveImageUrl(
                                                 category['icon']?.toString() ??
-                                                    '', // Add toString()
+                                                    '',
                                               ).startsWith('assets/'))
                                             Image.asset(
                                               _getEffectiveImageUrl(
                                                 category['icon']?.toString() ??
-                                                    '', // Add toString()
+                                                    '',
                                               ),
                                               height: 40,
                                               width: 40,
@@ -1603,7 +1560,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                             ),
                                             child: Text(
                                               category['label']?.toString() ??
-                                                  '', // Add toString()
+                                                  '',
                                               textAlign: TextAlign.center,
                                               style: GoogleFonts.poppins(
                                                 fontSize: 12,
@@ -1836,61 +1793,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               child: Stack(
                 children: [
                   Center(
-                    child:
-                        _getEffectiveImageUrl(
-                              product.imageUrl,
-                            ).startsWith('http')
-                            ? Image.network(
-                              _getEffectiveImageUrl(product.imageUrl),
-                              fit: BoxFit.contain,
-                              errorBuilder: (context, error, stackTrace) {
-                                print(
-                                  'Error loading image for ${product.title}: $error',
-                                );
-                                print(
-                                  'URL was: ${_getEffectiveImageUrl(product.imageUrl)}',
-                                );
-                                return Image.asset(
-                                  'assets/placeholder.png',
-                                  fit: BoxFit.contain,
-                                );
-                              },
-                              loadingBuilder: (
-                                context,
-                                child,
-                                loadingProgress,
-                              ) {
-                                if (loadingProgress == null) return child;
-                                return Center(
-                                  child: SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      value:
-                                          loadingProgress.expectedTotalBytes !=
-                                                  null
-                                              ? loadingProgress
-                                                      .cumulativeBytesLoaded /
-                                                  loadingProgress
-                                                      .expectedTotalBytes!
-                                              : null,
-                                      color: const Color(0xffEB7720),
-                                    ),
-                                  ),
-                                );
-                              },
-                            )
-                            : Image.asset(
-                              _getEffectiveImageUrl(product.imageUrl),
-                              fit: BoxFit.contain,
-                              errorBuilder: (context, error, stackTrace) {
-                                return Image.asset(
-                                  'assets/placeholder.png',
-                                  fit: BoxFit.contain,
-                                );
-                              },
-                            ),
+                    child: OptimizedImage(
+                      imageUrl: _getEffectiveImageUrl(product.imageUrl),
+                      fit: BoxFit.contain,
+                      placeholderAsset: 'assets/placeholder.png',
+                      width: tileWidth != null ? tileWidth * 0.45 : 75,
+                      height: tileWidth != null ? tileWidth * 0.45 : 75,
+                    ),
                   ),
                   Positioned(
                     top: 6,
@@ -1904,19 +1813,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                         return GestureDetector(
                           onTap: () async {
                             final success = await wishlist.toggleItem(product);
-                            if (success != null) {
-                              // ScaffoldMessenger.of(context).showSnackBar(
-                              //   SnackBar(
-                              //     content: Text(
-                              //       success
-                              //           ? 'Added to wishlist!'
-                              //           : 'Removed from wishlist!',
-                              //     ),
-                              //     backgroundColor:
-                              //         success ? Colors.blue : Colors.red,
-                              //   ),
-                              // );
-                            }
                           },
                           child: Container(
                             padding: const EdgeInsets.all(6),
@@ -2004,50 +1900,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                           ),
                       ],
                     ),
-                    // const SizedBox(height: 4),
-                    // Text(
-                    //   'Unit: ${currentSelectedUnit.size}',
-                    //   style: GoogleFonts.poppins(
-                    //     fontSize: 10,
-                    //     color: orangeColor,
-                    //   ),
-                    // ),
-                    // const SizedBox(height: 8),
-                    // Container(
-                    //   height: 28,
-                    //   padding: const EdgeInsets.symmetric(horizontal: 8),
-                    //   decoration: BoxDecoration(
-                    //     border: Border.all(color: orangeColor),
-                    //     borderRadius: BorderRadius.circular(6),
-                    //     color: isDarkMode ? Colors.grey[800] : Colors.white,
-                    //   ),
-                    //   child: InkWell(
-                    //     onTap: () {
-                    //       _showSizeSelectionBottomSheet(
-                    //         context,
-                    //         product,
-                    //         isDarkMode,
-                    //       );
-                    //     },
-                    //     child: Row(
-                    //       mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    //       children: [
-                    //         Text(
-                    //           product.selectedUnit.size,
-                    //           style: GoogleFonts.poppins(
-                    //             fontSize: 12,
-                    //             color: textColor,
-                    //           ),
-                    //         ),
-                    //         Icon(
-                    //           Icons.arrow_drop_down,
-                    //           color: orangeColor,
-                    //           size: 20,
-                    //         ),
-                    //       ],
-                    //     ),
-                    //   ),
-                    // ),
                   ],
                 );
               },

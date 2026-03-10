@@ -174,16 +174,18 @@ class ProductService extends ChangeNotifier {
           .map((item) => Map<String, dynamic>.from(item as Map))
           .toList();
 
-      // Populate _validImageUrls from cached products
+      // FIX: Populate _validImageUrls with unique image URLs only
       _validImageUrls.clear();
+      final Set<String> uniqueImageUrls = {};
       for (var product in _allProducts) {
-        if (isValidImageUrl(product.imageUrl)) {
+        if (isValidImageUrl(product.imageUrl) && !uniqueImageUrls.contains(product.imageUrl)) {
+          uniqueImageUrls.add(product.imageUrl);
           _validImageUrls.add(product.imageUrl);
         }
       }
 
       debugPrint(
-        'ProductService: Loaded ${_allProducts.length} products and ${_allCategories.length} categories from cache. Found ${_validImageUrls.length} valid image URLs.',
+        'ProductService: Loaded ${_allProducts.length} products and ${_allCategories.length} categories from cache. Found ${_validImageUrls.length} unique valid image URLs.',
       );
       return true;
     } catch (e) {
@@ -253,13 +255,14 @@ class ProductService extends ChangeNotifier {
     }
   }
 
-  // NEW: Method to fetch products for ALL categories and populate _allProducts
+  // FIXED: Method to fetch products for ALL categories and populate _allProducts
   static Future<void> _fetchProductsForAllCategories() async {
     debugPrint('ProductService: Starting _fetchProductsForAllCategories...');
     _allProducts.clear();
     _validImageUrls.clear();
     final Set<String> seenProductMainIds = {}; // For main product IDs
     final Set<int> seenProIds = {}; // For individual product size IDs
+    final Set<String> seenImageUrls = {}; // NEW: Track unique image URLs
 
     if (_allCategories.isEmpty) {
       debugPrint(
@@ -315,7 +318,9 @@ class ProductService extends ChangeNotifier {
               );
               _allProducts.add(uniqueProduct);
 
-              if (isValidImageUrl(product.imageUrl)) {
+              // FIX: Only add unique image URLs
+              if (isValidImageUrl(product.imageUrl) && !seenImageUrls.contains(product.imageUrl)) {
+                seenImageUrls.add(product.imageUrl);
                 _validImageUrls.add(product.imageUrl);
               }
             }
@@ -334,9 +339,10 @@ class ProductService extends ChangeNotifier {
     debugPrint(
       'ProductService: Finished _fetchProductsForAllCategories. Total products: ${_allProducts.length}',
     );
+    debugPrint('ProductService: Unique valid image URLs: ${_validImageUrls.length}');
   }
 
-  // This method fetches products for a single category and returns them.
+  // FIXED: This method fetches products for a single category and returns them.
   // It now accepts offset and limit for pagination.
   static Future<Map<String, dynamic>> fetchProductsByCategory(
     String categoryId, {
@@ -388,7 +394,19 @@ class ProductService extends ChangeNotifier {
                 item['technical_name'] as String? ?? 'No Description';
             String categoryName =
                 item['category_name'] as String? ?? 'Uncategorized';
-            String imageUrl = item['image'] as String? ?? '';
+          
+          // FIX: Better image URL handling
+          String imageUrl = item['image'] as String? ?? '';
+          
+          // Ensure image URL is properly formatted
+          if (imageUrl.isNotEmpty && !imageUrl.startsWith('http')) {
+            // If it's a relative path, construct absolute URL
+            if (imageUrl.startsWith('../')) {
+              imageUrl = imageUrl.replaceFirst('../', 'https://erpsmart.in/total/');
+            } else if (!imageUrl.startsWith('assets/')) {
+              imageUrl = 'https://erpsmart.in/total/' + imageUrl;
+            }
+          }
 
             // Generate a more unique mainProductId
             String productMainId =
@@ -692,15 +710,30 @@ static Future<List<Deal>> fetchDealsOfTheDay() async {
   return deals;
 }
 
-  // Method to get a random valid image URL
+  // FIXED: Method to get a random valid image URL
   static String getRandomValidImageUrl() {
     if (_validImageUrls.isNotEmpty) {
       return _validImageUrls[_random.nextInt(_validImageUrls.length)];
     }
-    return 'assets/placeholder.png'; // Fallback to local placeholder if no valid API images are found
+    
+    // If no valid API images, try to extract unique URLs from products
+    if (_allProducts.isNotEmpty) {
+      final Set<String> uniqueUrls = {};
+      for (var product in _allProducts) {
+        if (isValidImageUrl(product.imageUrl)) {
+          uniqueUrls.add(product.imageUrl);
+        }
+      }
+      if (uniqueUrls.isNotEmpty) {
+        _validImageUrls = uniqueUrls.toList();
+        return _validImageUrls[_random.nextInt(_validImageUrls.length)];
+      }
+    }
+    
+    return 'assets/placeholder.png'; // Fallback to local placeholder
   }
 
-  // FIX: Updated to store as Map<String, dynamic>
+  // FIXED: Updated to store as Map<String, dynamic>
   static Future<void> loadCategoriesFromApi() async {
     debugPrint(
       'ProductService: Attempting to load CATEGORIES data from API via POST (type=1014): $_productApiUrl',
@@ -997,8 +1030,6 @@ static Future<List<Deal>> fetchDealsOfTheDay() async {
       },
     ];
 
-    
-
     final seenProductMainIds = <String>{};
     final List<Product> productsToProcess = [];
 
@@ -1196,13 +1227,33 @@ static Future<List<Deal>> fetchDealsOfTheDay() async {
     }).toList();
   }
 
-  // Helper method to check if a URL is valid and absolute for image loading
+  // FIXED: Helper method to check if a URL is valid and absolute for image loading
   static bool isValidImageUrl(String? url) {
     if (url == null || url.isEmpty) {
       return false;
     }
-    // Check if it's a valid absolute URL AND not just the base API path as a placeholder
-    // Also explicitly check for the base API URL without a proper image path
-    return Uri.tryParse(url)?.isAbsolute == true && !url.endsWith('erp/api/');
+    
+    // Check if it's a valid absolute URL
+    final uri = Uri.tryParse(url);
+    if (uri == null || !uri.isAbsolute) {
+      return false;
+    }
+    
+    // Check if it's not just the base API path
+    if (url.contains('erpsmart.in/total/api/') && 
+        (url.endsWith('/') || !url.contains('.'))) {
+      return false;
+    }
+    
+    // Check if it has a valid image extension or is a complete path
+    final lowerUrl = url.toLowerCase();
+    return lowerUrl.contains('.jpg') || 
+           lowerUrl.contains('.jpeg') || 
+           lowerUrl.contains('.png') || 
+           lowerUrl.contains('.gif') ||
+           lowerUrl.contains('.webp') ||
+           (lowerUrl.contains('erpsmart.in/total/') && 
+            !lowerUrl.contains('api/') &&
+            lowerUrl.contains('/uploads/'));
   }
 }

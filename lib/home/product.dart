@@ -24,6 +24,9 @@ import 'package:kisangro/common/common_app_bar.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
+import 'package:kisangro/widgets/optimized_image.dart';
+import 'package:kisangro/services/image_cache_service.dart';
+import 'package:kisangro/services/image_preloader_service.dart';
 
 class ProductDetailPage extends StatefulWidget {
   final Product? product;
@@ -41,11 +44,10 @@ class ProductDetailPage extends StatefulWidget {
   State<ProductDetailPage> createState() => _ProductDetailPageState();
 }
 
-
 class _ProductDetailPageState extends State<ProductDetailPage> {
   int activeIndex = 0;
   ProductSize? _currentSelectedUnit;
-  late final List<String> imageAssets;
+  late final List<String> _imageAssets;
   VideoPlayerController? _videoController;
   YoutubePlayerController? _youtubeController;
   Future<void>? _initializeVideoPlayerFuture;
@@ -59,61 +61,133 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   final Color themeOrange = const Color(0xffEB7720);
   final Color redColor = const Color(0xFFDC2F2F);
 
-  // API response data
+  // API response data - Updated to match new response format
   Map<String, dynamic>? _apiProductData;
   bool _isLoading = true;
   String? _errorMessage;
 
+  // New structure for photos
+  List<String> _productImages = [];
+
+  @override
+  void initState() {
+    super.initState();
+    
+    if (_isOrderedProduct) {
+      final int proId = int.tryParse(widget.orderedProduct!.id) ?? 0;
+      _currentSelectedUnit = ProductSize(
+        proId: proId,
+        size: widget.orderedProduct!.unit,
+        price: widget.orderedProduct!.price,
+        sellingPrice: widget.orderedProduct!.price,
+      );
+    } else {
+      _currentSelectedUnit = widget.product!.selectedUnit;
+    }
+
+    // Initialize with empty list, will be populated from API
+    _productImages = [];
+    _imageAssets = [];
+
+    // Fetch product details from API
+    _fetchProductDetails();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadSimilarProducts();
+      _loadTopSellingProducts();
+      
+      // Preload images for similar products
+      Future.delayed(const Duration(milliseconds: 500), () {
+        final List<String> imageUrls = [];
+        
+        // Add current product images
+        imageUrls.add(_getEffectiveImageUrl(
+          _isOrderedProduct ? widget.orderedProduct!.imageUrl : widget.product!.imageUrl
+        ));
+        
+        // Add similar products images
+        for (final product in similarProducts) {
+          imageUrls.add(_getEffectiveImageUrl(product.imageUrl));
+        }
+        
+        // Add top selling products images
+        for (final product in topSellingProducts) {
+          imageUrls.add(_getEffectiveImageUrl(product.imageUrl));
+        }
+        
+        ImageCacheService().preloadImages(imageUrls);
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _videoController?.dispose();
+    _youtubeController?.dispose();
+    super.dispose();
+  }
+
   // Helper method to determine if a URL is valid for network image or if it's a local asset
   String _getEffectiveImageUrl(String rawImageUrl) {
-    if (rawImageUrl.isEmpty || rawImageUrl == 'https://sgserp.in/erp/api/' || (Uri.tryParse(rawImageUrl)?.isAbsolute != true && !rawImageUrl.startsWith('assets/'))) {
+    if (rawImageUrl.isEmpty || 
+        rawImageUrl == 'https://sgserp.in/erp/api/' || 
+        (Uri.tryParse(rawImageUrl)?.isAbsolute != true && !rawImageUrl.startsWith('assets/'))) {
       return ProductService.getRandomValidImageUrl();
     }
     return rawImageUrl;
   }
 
+  // UPDATED: Simple image widget with caching using OptimizedImage
+  Widget _buildNetworkImage(String url, {BoxFit fit = BoxFit.contain}) {
+    return OptimizedImage(
+      imageUrl: url,
+      fit: fit,
+      placeholderAsset: 'assets/placeholder.png',
+    );
+  }
+
   bool get _isOrderedProduct => widget.orderedProduct != null;
-String get _displayTitle => _isOrderedProduct 
-    ? widget.orderedProduct!.title 
-    : (_apiProductData != null && _apiProductData!['product_name'] != null && _apiProductData!['product_name'].toString().isNotEmpty
-        ? _apiProductData!['product_name'] 
-        : widget.product!.title);
 
-String get _displaySubtitle => _isOrderedProduct 
-    ? widget.orderedProduct!.description 
-    : (_apiProductData != null && _apiProductData!['product_description'] != null && _apiProductData!['product_description'].toString().isNotEmpty
-        ? _apiProductData!['product_description'] 
-        : widget.product!.subtitle);
+  String get _displayTitle => _isOrderedProduct 
+      ? widget.orderedProduct!.title 
+      : (_apiProductData != null && _apiProductData!['product_name'] != null && _apiProductData!['product_name'].toString().isNotEmpty
+          ? _apiProductData!['product_name'] 
+          : widget.product!.title);
 
-String get _displayImageUrl => _isOrderedProduct 
-    ? widget.orderedProduct!.imageUrl 
-    : (_apiProductData != null && _apiProductData!['image'] != null && _apiProductData!['image'].toString().isNotEmpty 
-        ? _apiProductData!['image'] 
-        : widget.product!.imageUrl);
+  String get _displaySubtitle => _isOrderedProduct 
+      ? widget.orderedProduct!.description 
+      : (_apiProductData != null && _apiProductData!['product_description'] != null && _apiProductData!['product_description'].toString().isNotEmpty
+          ? _apiProductData!['product_description'] 
+          : widget.product!.subtitle);
 
-String get _displayCancellationPolicy => _apiProductData != null && _apiProductData!['cancellation_policy'] != null && _apiProductData!['cancellation_policy'].toString().isNotEmpty
-    ? _apiProductData!['cancellation_policy'] 
-    : 'Upto 5 days returnable';
+  String get _displayCancellationPolicy => _apiProductData != null && _apiProductData!['cancellation_policy'] != null && _apiProductData!['cancellation_policy'].toString().isNotEmpty
+      ? _apiProductData!['cancellation_policy'] 
+      : 'Upto 5 days returnable';
 
-String get _displayTargetPests => _apiProductData != null && _apiProductData!['target_pests'] != null && _apiProductData!['target_pests'].toString().isNotEmpty
-    ? _apiProductData!['target_pests'] 
-    : 'Yellow mites, red mites, spotted mites, leaf miners, sucking insects';
+  String get _displayTargetPests => _apiProductData != null && _apiProductData!['target_pests'] != null && _apiProductData!['target_pests'].toString().isNotEmpty
+      ? _apiProductData!['target_pests'] 
+      : 'Yellow mites, red mites, spotted mites, leaf miners, sucking insects';
 
-String get _displayTargetCrops => _apiProductData != null && _apiProductData!['target_crops'] != null && _apiProductData!['target_crops'].toString().isNotEmpty
-    ? _apiProductData!['target_crops'] 
-    : 'Grapes, roses, brinjal, chili, tea, cotton, ornamental plants';
+  String get _displayTargetCrops => _apiProductData != null && _apiProductData!['target_crops'] != null && _apiProductData!['target_crops'].toString().isNotEmpty
+      ? _apiProductData!['target_crops'] 
+      : 'Grapes, roses, brinjal, chili, tea, cotton, ornamental plants';
 
-String get _displayDosage => _apiProductData != null && _apiProductData!['dosage'] != null && _apiProductData!['dosage'].toString().isNotEmpty
-    ? _apiProductData!['dosage'] 
-    : '1 ml per liter of water (200 ml per acre)';
+  String get _displayDosage => _apiProductData != null && _apiProductData!['dosage'] != null && _apiProductData!['dosage'].toString().isNotEmpty
+      ? _apiProductData!['dosage'] 
+      : '1 ml per liter of water (200 ml per acre)';
 
-String get _displayAvailablePack => _apiProductData != null && _apiProductData!['available_pack'] != null && _apiProductData!['available_pack'].toString().isNotEmpty
-    ? _apiProductData!['available_pack'] 
-    : '50, 100, 250, 500, 1000 ml';
+  String get _displayAvailablePack => _apiProductData != null && _apiProductData!['available_pack'] != null && _apiProductData!['available_pack'].toString().isNotEmpty
+      ? _apiProductData!['available_pack'] 
+      : '50, 100, 250, 500, 1000 ml';
 
-String get _displayVideoUrl => _apiProductData != null && _apiProductData!['video'] != null && _apiProductData!['video'].toString().isNotEmpty
-    ? _apiProductData!['video'] 
-    : '';
+  String get _displayVideoUrl => _apiProductData != null && _apiProductData!['video'] != null && _apiProductData!['video'].toString().isNotEmpty
+      ? _apiProductData!['video'] 
+      : '';
+
+  String get _displayProductFeature => _apiProductData != null && _apiProductData!['product_feature'] != null && _apiProductData!['product_feature'].toString().isNotEmpty
+      ? _apiProductData!['product_feature'] 
+      : 'Premium quality product';
+
   double? get _displayMrpPerSelectedUnit {
     if (_isOrderedProduct) {
       return widget.orderedProduct!.price;
@@ -131,20 +205,20 @@ String get _displayVideoUrl => _apiProductData != null && _apiProductData!['vide
   }
 
   String get _displayUnitSizeDescription {
-        if (_isOrderedProduct) {
-          return 'Ordered Unit: ${widget.orderedProduct!.unit}';
-        } else {
-          return 'Unit: ${_currentSelectedUnit?.size ?? 'N/A'}';
-        }
-      }
+    if (_isOrderedProduct) {
+      return 'Ordered Unit: ${widget.orderedProduct!.unit}';
+    } else {
+      return 'Unit: ${_currentSelectedUnit?.size ?? 'N/A'}';
+    }
+  }
   
   String get _displayCategory {
-      if (_isOrderedProduct) {
-        return widget.orderedProduct!.category;
-      } else {
-        return widget.product!.category;
-      }
+    if (_isOrderedProduct) {
+      return widget.orderedProduct!.category;
+    } else {
+      return widget.product!.category;
     }
+  }
 
   Product _currentProductForActions() {
     if (_isOrderedProduct) {
@@ -170,293 +244,237 @@ String get _displayVideoUrl => _apiProductData != null && _apiProductData!['vide
     }
   }
 
-Future<void> _fetchProductDetails() async {
-  if (_isOrderedProduct) {
-    setState(() {
-      _isLoading = false;
-    });
-    return;
-  }
+  Future<void> _fetchProductDetails() async {
+    if (_isOrderedProduct) {
+      setState(() {
+        _isLoading = false;
+      });
+      return;
+    }
 
-  try {
-    // Get the mainProductId
-    String mainProductId = widget.product?.mainProductId ?? '0';
-    String proId = '0';
-    
-    print('Original mainProductId: $mainProductId');
-    
-    // First, try to get the selected unit's pro_id directly from the product
-    // This is more reliable as it comes from the selected unit
-    if (widget.product?.selectedUnit != null) {
-      proId = widget.product!.selectedUnit.proId.toString();
-      print('Using selected unit proId: $proId');
-    } else {
-      // If no selected unit, try to extract from mainProductId
-      // Format might be like "d_7_null" or "d_55_null" or "AURA 505_8_null"
-      if (mainProductId.contains('_')) {
-        final parts = mainProductId.split('_');
-        print('Split parts: $parts');
-        
-        // Look for the numeric part - usually the second part or any numeric part
-        for (var part in parts) {
-          // Try to parse as int, if successful and it's not "null"
-          final parsed = int.tryParse(part);
-          if (parsed != null && part.toLowerCase() != 'null') {
-            proId = part;
-            print('Found numeric proId: $proId from part: $part');
-            break;
+    try {
+      // Get the mainProductId
+      String mainProductId = widget.product?.mainProductId ?? '0';
+      String proId = '0';
+      
+      print('Original mainProductId: $mainProductId');
+      
+      // First, try to get the selected unit's pro_id directly from the product
+      if (widget.product?.selectedUnit != null) {
+        proId = widget.product!.selectedUnit.proId.toString();
+        print('Using selected unit proId: $proId');
+      } else {
+        // If no selected unit, try to extract from mainProductId
+        if (mainProductId.contains('_')) {
+          final parts = mainProductId.split('_');
+          print('Split parts: $parts');
+          
+          for (var part in parts) {
+            final parsed = int.tryParse(part);
+            if (parsed != null && part.toLowerCase() != 'null') {
+              proId = part;
+              print('Found numeric proId: $proId from part: $part');
+              break;
+            }
+          }
+          
+          if (proId == '0' && parts.length > 1 && parts[1].toLowerCase() != 'null') {
+            proId = parts[1];
+            print('Using second part as proId: $proId');
           }
         }
-        
-        // If still not found, try the second part as fallback
-        if (proId == '0' && parts.length > 1 && parts[1].toLowerCase() != 'null') {
-          proId = parts[1];
-          print('Using second part as proId: $proId');
-        }
       }
-    }
-    
-    // Final fallback
-    if (proId == '0') {
-      proId = mainProductId;
-      print('Using full mainProductId as fallback: $proId');
-    }
-    
-    print('Final proId to send to API: $proId');
-    
-    final response = await http.post(
-      Uri.parse('https://erpsmart.in/total/api/m_api/'),
-      body: {
-        'cid': '85788578',
-        'type': '1018',
-        'ln': '145',
-        'lt': '145',
-        'device_id': '12345',
-        'pro_id': proId,
-      },
-    );
-
-    if (response.statusCode == 200) {
-      final jsonResponse = json.decode(response.body);
-      print('Product Response for pro_id $proId: $jsonResponse');
       
-      if (jsonResponse['status'] == 'success' && jsonResponse['data'] != null) {
-        setState(() {
-          _apiProductData = jsonResponse['data'];
-          _isLoading = false;
-        });
+      if (proId == '0') {
+        proId = mainProductId;
+        print('Using full mainProductId as fallback: $proId');
+      }
+      
+      print('Final proId to send to API: $proId');
+      
+      final response = await http.post(
+        Uri.parse('https://erpsmart.in/total/api/m_api/'),
+        body: {
+          'cid': '85788578',
+          'type': '1018',
+          'ln': '145',
+          'lt': '145',
+          'device_id': '12345',
+          'pro_id': proId,
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final jsonResponse = json.decode(response.body);
+        print('Product Response for pro_id $proId: $jsonResponse');
         
-        _initializeVideo();
+        if (jsonResponse['status'] == 'success' && jsonResponse['data'] != null) {
+          final data = jsonResponse['data'];
+          
+          // Extract photos from the new response format
+          List<String> photos = [];
+          if (data['photos'] != null && data['photos'] is List) {
+            photos = List<String>.from(data['photos']);
+            print('Loaded ${photos.length} photos from API');
+          }
+          
+          setState(() {
+            _apiProductData = data;
+            _productImages = photos;
+            _isLoading = false;
+          });
+          
+          // Preload product images
+          final List<String> imageUrls = [];
+          if (photos.isNotEmpty) {
+            imageUrls.addAll(photos);
+          } else {
+            imageUrls.add(_getEffectiveImageUrl(widget.product!.imageUrl));
+          }
+          ImageCacheService().preloadImages(imageUrls);
+          
+          _initializeVideo();
+        } else {
+          print('API returned error or no data, using local product data');
+          setState(() {
+            _apiProductData = {
+              'product_id': proId,
+              'product_name': widget.product?.title ?? 'Product',
+              'product_description': widget.product?.subtitle ?? '',
+              'product_feature': 'Premium quality product',
+              'cancellation_policy': 'Upto 5 days returnable',
+              'target_pests': 'unavailable',
+              'target_crops': 'unavailable',
+              'dosage': 'As per requirement',
+              'available_pack': _getAvailablePackFromSizes(),
+              'video': '',
+              'photos': [],
+            };
+            _productImages = [];
+            _isLoading = false;
+          });
+          
+          _initializeVideo();
+        }
       } else {
-        print('API returned error or no data, using local product data');
+        print('Server error: ${response.statusCode}, using local product data');
         setState(() {
           _apiProductData = {
             'product_id': proId,
             'product_name': widget.product?.title ?? 'Product',
             'product_description': widget.product?.subtitle ?? '',
             'product_feature': 'Premium quality product',
-            'image': widget.product?.imageUrl ?? '',
             'cancellation_policy': 'Upto 5 days returnable',
-            'target_pests': 'Yellow mites, red mites, spotted mites, leaf miners, sucking insects',
-            'target_crops': 'Grapes, roses, brinjal, chili, tea, cotton, ornamental plants',
+            'target_pests': 'unavailable',
+            'target_crops': 'unavailable',
             'dosage': 'As per requirement',
             'available_pack': _getAvailablePackFromSizes(),
             'video': '',
+            'photos': [],
           };
+          _productImages = [];
           _isLoading = false;
         });
         
         _initializeVideo();
       }
-    } else {
-      print('Server error: ${response.statusCode}, using local product data');
+    } catch (e) {
+      print('Error in _fetchProductDetails: $e');
       setState(() {
         _apiProductData = {
-          'product_id': proId,
+          'product_id': widget.product?.selectedUnit?.proId.toString() ?? '0',
           'product_name': widget.product?.title ?? 'Product',
           'product_description': widget.product?.subtitle ?? '',
           'product_feature': 'Premium quality product',
-          'image': widget.product?.imageUrl ?? '',
           'cancellation_policy': 'Upto 5 days returnable',
-          'target_pests': 'Yellow mites, red mites, spotted mites, leaf miners, sucking insects',
-          'target_crops': 'Grapes, roses, brinjal, chili, tea, cotton, ornamental plants',
+          'target_pests': 'unavailable',
+          'target_crops': 'unavailable',
           'dosage': 'As per requirement',
           'available_pack': _getAvailablePackFromSizes(),
           'video': '',
+          'photos': [],
         };
+        _productImages = [];
         _isLoading = false;
       });
       
       _initializeVideo();
     }
-  } catch (e) {
-    print('Error in _fetchProductDetails: $e');
-    setState(() {
-      _apiProductData = {
-        'product_id': widget.product?.selectedUnit?.proId.toString() ?? '0',
-        'product_name': widget.product?.title ?? 'Product',
-        'product_description': widget.product?.subtitle ?? '',
-        'product_feature': 'Premium quality product',
-        'image': widget.product?.imageUrl ?? '',
-        'cancellation_policy': 'Upto 5 days returnable',
-        'target_pests': 'Yellow mites, red mites, spotted mites, leaf miners, sucking insects',
-        'target_crops': 'Grapes, roses, brinjal, chili, tea, cotton, ornamental plants',
-        'dosage': 'As per requirement',
-        'available_pack': _getAvailablePackFromSizes(),
-        'video': '',
-      };
-      _isLoading = false;
-    });
-    
-    _initializeVideo();
   }
-}
 
-
-// Helper method to generate available pack string from product sizes
-String _getAvailablePackFromSizes() {
-  if (!_isOrderedProduct && widget.product?.availableSizes != null) {
-    final sizes = widget.product!.availableSizes
-        .where((size) => size.size.isNotEmpty && size.size != 'Unit')
-        .map((size) => size.size)
-        .toList();
-    
-    if (sizes.isNotEmpty) {
-      return sizes.join(', ');
-    }
-  }
-  return '50, 100, 250, 500, 1000 ml';
-}
-// Add this new method to load product sizes
-Future<void> _loadProductSizes(String proId) async {
-  try {
-    // Try to fetch product sizes from a different endpoint if available
-    final response = await http.post(
-      Uri.parse('https://erpsmart.in/total/api/m_api/'),
-      body: {
-        'cid': '85788578',
-        'type': '1019', // Different type for sizes
-        'ln': '145',
-        'lt': '145',
-        'device_id': '12345',
-        'pro_id': proId,
-      },
-    );
-
-    if (response.statusCode == 200) {
-      final jsonResponse = json.decode(response.body);
-      print('Product sizes response: $jsonResponse');
+  // Helper method to generate available pack string from product sizes
+  String _getAvailablePackFromSizes() {
+    if (!_isOrderedProduct && widget.product?.availableSizes != null) {
+      final sizes = widget.product!.availableSizes
+          .where((size) => size.size.isNotEmpty && size.size != 'Unit')
+          .map((size) => size.size)
+          .toList();
       
-      if (jsonResponse['status'] == 'success' && jsonResponse['data'] != null) {
-        // Update the product with sizes from API
-        // You'll need to implement this based on your API response structure
+      if (sizes.isNotEmpty) {
+        return sizes.join(', ');
       }
     }
-  } catch (e) {
-    print('Error loading product sizes: $e');
-  }
-}
-
-void _initializeVideo() {
-  // Dispose existing controllers
-  _videoController?.dispose();
-  _youtubeController?.dispose();
-  
-  String videoUrl = _displayVideoUrl;
-  
-  if (videoUrl.isNotEmpty) {
-    if (videoUrl.contains('youtube.com') || videoUrl.contains('youtu.be') || videoUrl.contains('youtube.com/shorts')) {
-      // Handle YouTube video including shorts
-      String? videoId;
-      if (videoUrl.contains('shorts/')) {
-        // Extract ID from shorts URL: https://youtube.com/shorts/9344J2QRTVI
-        final uri = Uri.parse(videoUrl);
-        final pathSegments = uri.pathSegments;
-        if (pathSegments.isNotEmpty && pathSegments.last.isNotEmpty) {
-          videoId = pathSegments.last.split('?').first;
-        }
-      } else {
-        videoId = YoutubePlayer.convertUrlToId(videoUrl);
-      }
-      
-      if (videoId != null) {
-        _youtubeController = YoutubePlayerController(
-          initialVideoId: videoId,
-          flags: const YoutubePlayerFlags(
-            autoPlay: false,
-            mute: false,
-          ),
-        );
-        setState(() {
-          _videoLoadError = false;
-        });
-      } else {
-        setState(() {
-          _videoLoadError = true;
-        });
-      }
-    } else {
-      // Handle direct video file
-      _videoController = VideoPlayerController.network(videoUrl);
-      _initializeVideoPlayerFuture = _videoController!.initialize().then((_) {
-        setState(() {
-          _videoLoadError = false;
-        });
-      }).catchError((error) {
-        print('Video initialization error: $error');
-        setState(() {
-          _videoLoadError = true;
-        });
-      });
-      _videoController!.setLooping(true);
-    }
-  } else {
-    // No video URL provided, set error state or hide video section
-    setState(() {
-      _videoLoadError = true;
-    });
-  }
-}
-
-@override
-void initState() {
-  super.initState();
-  
-  if (_isOrderedProduct) {
-    final int proId = int.tryParse(widget.orderedProduct!.id) ?? 0;
-    _currentSelectedUnit = ProductSize(
-      proId: proId,
-      size: widget.orderedProduct!.unit,
-      price: widget.orderedProduct!.price,
-      sellingPrice: widget.orderedProduct!.price,
-    );
-  } else {
-    _currentSelectedUnit = widget.product!.selectedUnit;
-    // Print for debugging
-    print('Product mainProductId: ${widget.product!.mainProductId}');
-    print('Selected unit proId: ${widget.product!.selectedUnit.proId}');
-    print('Selected unit size: ${widget.product!.selectedUnit.size}');
+    return '50, 100, 250, 500, 1000 ml';
   }
 
-  // Fetch product details from API
-  _fetchProductDetails();
-
-  // Initialize with placeholder or product image
-  String mainDisplayImage = _getEffectiveImageUrl(_displayImageUrl);
-  imageAssets = [mainDisplayImage, mainDisplayImage, mainDisplayImage];
-
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    _loadSimilarProducts();
-    _loadTopSellingProducts();
-  });
-}
-  @override
-  void dispose() {
+  void _initializeVideo() {
+    // Dispose existing controllers
     _videoController?.dispose();
     _youtubeController?.dispose();
-    super.dispose();
+    
+    String videoUrl = _displayVideoUrl;
+    
+    if (videoUrl.isNotEmpty) {
+      if (videoUrl.contains('youtube.com') || videoUrl.contains('youtu.be') || videoUrl.contains('youtube.com/shorts')) {
+        // Handle YouTube video including shorts
+        String? videoId;
+        if (videoUrl.contains('shorts/')) {
+          final uri = Uri.parse(videoUrl);
+          final pathSegments = uri.pathSegments;
+          if (pathSegments.isNotEmpty && pathSegments.last.isNotEmpty) {
+            videoId = pathSegments.last.split('?').first;
+          }
+        } else {
+          videoId = YoutubePlayer.convertUrlToId(videoUrl);
+        }
+        
+        if (videoId != null) {
+          _youtubeController = YoutubePlayerController(
+            initialVideoId: videoId,
+            flags: const YoutubePlayerFlags(
+              autoPlay: false,
+              mute: false,
+            ),
+          );
+          setState(() {
+            _videoLoadError = false;
+          });
+        } else {
+          setState(() {
+            _videoLoadError = true;
+          });
+        }
+      } else {
+        // Handle direct video file
+        _videoController = VideoPlayerController.network(videoUrl);
+        _initializeVideoPlayerFuture = _videoController!.initialize().then((_) {
+          setState(() {
+            _videoLoadError = false;
+          });
+        }).catchError((error) {
+          print('Video initialization error: $error');
+          setState(() {
+            _videoLoadError = true;
+          });
+        });
+        _videoController!.setLooping(true);
+      }
+    } else {
+      setState(() {
+        _videoLoadError = true;
+      });
+    }
   }
-  
 
   void _loadSimilarProducts() {
     final currentProductCategory = _currentProductForActions().category;
@@ -497,12 +515,6 @@ void initState() {
 
     try {
       await cart.addItem(_currentProductForActions(), quantity: _quantity);
-      // ScaffoldMessenger.of(context).showSnackBar(
-      //   SnackBar(
-      //     content: Text('${_currentProductForActions().title} (${_currentProductForActions().selectedUnit.size}) x$_quantity added to cart!'),
-      //     backgroundColor: Colors.green,
-      //   ),
-      // );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -527,6 +539,20 @@ void initState() {
     }
   }
 
+  // Helper method to get all display images (API photos + fallback)
+  List<String> _getDisplayImages() {
+    if (_productImages.isNotEmpty) {
+      return _productImages;
+    }
+    
+    // Fallback to single product image
+    final String singleImage = _isOrderedProduct 
+        ? widget.orderedProduct!.imageUrl 
+        : widget.product!.imageUrl;
+    
+    return [singleImage, singleImage, singleImage]; // Duplicate for carousel effect
+  }
+
   // This is the actual product detail content
   Widget _buildProductDetailContent(BuildContext context) {
     final themeMode = Provider.of<ThemeModeProvider>(context).themeMode;
@@ -545,6 +571,8 @@ void initState() {
     final Color quantityBorderColor = isDarkMode ? Colors.grey[600]! : Colors.grey.shade400;
     final Color orangeColor = const Color(0xffEB7720);
 
+    final List<String> displayImages = _getDisplayImages();
+
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -556,105 +584,98 @@ void initState() {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Stack(
-            children: [
-              Container(
-                height: 200,
-                decoration: BoxDecoration(
-                  color: carouselBackgroundColor,
-                  borderRadius: BorderRadius.circular(5),
-                ),
-                child: CarouselSlider.builder(
-                  itemCount: imageAssets.length,
-                  itemBuilder: (context, index, realIndex) {
-                    final imageUrl = imageAssets[index];
-                    final bool isNetworkImage = imageUrl.startsWith('http');
-                    return isNetworkImage
-                        ? Image.network(
-                      imageUrl,
-                      fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) => Image.asset(
-                        'assets/placeholder.png',
-                        fit: BoxFit.contain,
-                      ),
-                    )
-                        : Image.asset(imageUrl, fit: BoxFit.contain);
-                  },
-                  options: CarouselOptions(
-                    height: 200,
-                    autoPlay: false,
-                    enableInfiniteScroll: false,
-                    onPageChanged: (index, reason) => setState(() => activeIndex = index),
+          // Image Carousel Section - Updated to use multiple photos with OptimizedImage
+         // Image Carousel Section - Fixed to show images at full size
+Stack(
+  children: [
+    Container(
+      height: 250,
+      width: double.infinity, // Ensure full width
+      decoration: BoxDecoration(
+        color: carouselBackgroundColor,
+        borderRadius: BorderRadius.circular(5),
+      ),
+      child: CarouselSlider.builder(
+        itemCount: displayImages.length,
+        itemBuilder: (context, index, realIndex) {
+          final imageUrl = displayImages[index];
+          return Container(
+            width: double.infinity,
+            height: 250,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(5),
+              child: OptimizedImage(
+                imageUrl: _getEffectiveImageUrl(imageUrl),
+                fit: BoxFit.cover, // Changed from contain to cover for full container filling
+                placeholderAsset: 'assets/placeholder.png',
+                width: double.infinity,
+                height: 250,
+              ),
+            ),
+          );
+        },
+        options: CarouselOptions(
+          height: 250,
+          viewportFraction: 1.0, // This ensures each image takes full width
+          autoPlay: displayImages.length > 1,
+          autoPlayInterval: const Duration(seconds: 3),
+          autoPlayAnimationDuration: const Duration(milliseconds: 800),
+          autoPlayCurve: Curves.fastOutSlowIn,
+          enlargeCenterPage: false, // Disable enlargement to prevent sizing issues
+          enableInfiniteScroll: displayImages.length > 1,
+          onPageChanged: (index, reason) => setState(() => activeIndex = index),
+        ),
+      ),
+    ),
+    // Favorite button
+    Positioned(
+      top: 8,
+      right: 8,
+      child: Consumer<WishlistModel>(
+        builder: (context, wishlist, child) {
+          final Product productForActions = _currentProductForActions();
+          final bool isFavorite = wishlist.containsItem(productForActions.selectedUnit.proId);
+          return IconButton(
+            onPressed: () async {
+              final success = await wishlist.toggleItem(productForActions);
+            },
+            icon: Icon(
+              isFavorite ? Icons.favorite : Icons.favorite_border,
+              color: isFavorite ? redColor : greyTextColor,
+              size: 28,
+            ),
+            splashRadius: 24,
+          );
+        },
+      ),
+    ),
+  ],
+),          // Dot Indicators
+          if (displayImages.length > 1)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8.0),
+              child: Center(
+                child: AnimatedSmoothIndicator(
+                  activeIndex: activeIndex,
+                  count: displayImages.length,
+                  effect: ExpandingDotsEffect(
+                    activeDotColor: primaryColor,
+                    dotHeight: 5,
+                    dotWidth: 8,
                   ),
                 ),
               ),
-              // Positioned(
-              //   top: 8,
-              //   right: 8,
-              //   child: IconButton(
-              //     onPressed: () {
-              //       ScaffoldMessenger.of(context).showSnackBar(
-              //         SnackBar(content: Text('Share functionality coming soon!', style: GoogleFonts.poppins())),
-              //       );
-              //     },
-              //     icon: Icon(Icons.share, color: greyTextColor, size: 28),
-              //     splashRadius: 24,
-              //   ),
-              // ),
-              Positioned(
-                top: 8,
-                right: 8,
-                child: Consumer<WishlistModel>(
-                  builder: (context, wishlist, child) {
-                    final Product productForActions = _currentProductForActions();
-                    final bool isFavorite = wishlist.containsItem(productForActions.selectedUnit.proId);
-                    return IconButton(
-                      onPressed: () async {
-                        final success = await wishlist.toggleItem(productForActions);
-                        if (success != null) {
-                          // ScaffoldMessenger.of(context).showSnackBar(
-                          //   SnackBar(
-                          //     content: Text(
-                          //       isFavorite
-                          //           ? '${productForActions.title} removed from wishlist!'
-                          //           : '${productForActions.title} added to wishlist!',
-                          //       style: GoogleFonts.poppins(),
-                          //     ),
-                          //     backgroundColor: isFavorite ? redColor : Colors.blue,
-                          //   ),
-                          // );
-                        }
-                      },
-                      icon: Icon(
-                        isFavorite ? Icons.favorite : Icons.favorite_border,
-                        color: isFavorite ? redColor : greyTextColor,
-                        size: 28,
-                      ),
-                      splashRadius: 24,
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 8),
-          Center(
-            child: AnimatedSmoothIndicator(
-              activeIndex: activeIndex,
-              count: imageAssets.length,
-              effect: ExpandingDotsEffect(
-                activeDotColor: primaryColor,
-                dotHeight: 5,
-                dotWidth: 8,
-              ),
             ),
-          ),
+          
           const SizedBox(height: 16),
+          
+          // Product Details
           Text(_displayTitle, style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.bold, color: textColor)),
           Text(_displaySubtitle, style: GoogleFonts.poppins(fontSize: 14, color: subtitleColor)),
           Text(_displayCategory, style: GoogleFonts.poppins(fontSize: 14, color: greyTextColor)),
           const SizedBox(height: 10),
+          
+          // Size Selection
           if (!_isOrderedProduct)
             SizedBox(
               height: 50,
@@ -703,6 +724,7 @@ void initState() {
               ],
             ),
 
+          // Quantity Selector
           if (!_isOrderedProduct)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 16.0),
@@ -748,6 +770,7 @@ void initState() {
               ),
             ),
 
+          // Price Display
           const SizedBox(height: 10),
           Row(
             children: [
@@ -780,6 +803,8 @@ void initState() {
             style: GoogleFonts.poppins(color: subtitleColor),
           ),
           const SizedBox(height: 10),
+          
+          // Action Buttons
           Row(
             children: [
               Expanded(
@@ -816,46 +841,60 @@ void initState() {
               ),
             ],
           ),
+          
           const SizedBox(height: 10),
           Divider(color: dividerColor, thickness: 3),
           const SizedBox(height: 20),
+          
+          // Product Information Sections
           _buildHeaderSection('Cancellation Policy', isDarkMode),
           const SizedBox(height: 8),
           _buildDottedText(_displayCancellationPolicy, isDarkMode),
           const SizedBox(height: 20),
           Divider(color: dividerColor, thickness: 3),
           const SizedBox(height: 20),
+          
           _buildHeaderSection('About Product', isDarkMode),
           const SizedBox(height: 8),
           Text(
-            '$_displaySubtitle\n\n${_apiProductData != null ? _apiProductData!['product_feature'] ?? '' : ''}',
+            '$_displaySubtitle\n\n$_displayProductFeature',
             style: GoogleFonts.poppins(fontSize: 14, color: subtitleColor),
           ),
           const SizedBox(height: 12),
+          
           _buildHeaderSection('Target Pests', isDarkMode),
           const SizedBox(height: 8),
           _buildDottedText(_displayTargetPests, isDarkMode),
           const SizedBox(height: 12),
+          
           _buildHeaderSection('Target Crops', isDarkMode),
           const SizedBox(height: 8),
           _buildDottedText(_displayTargetCrops, isDarkMode),
           const SizedBox(height: 12),
+          
           _buildHeaderSection('Dosage', isDarkMode),
           const SizedBox(height: 8),
           _buildDottedText(_displayDosage, isDarkMode),
           const SizedBox(height: 12),
+          
           _buildHeaderSection('Available Pack', isDarkMode),
           const SizedBox(height: 8),
           _buildDottedText(_displayAvailablePack, isDarkMode),
           const SizedBox(height: 15),
+          
           Divider(color: dividerColor, thickness: 3),
           const SizedBox(height: 20),
+          
+          // Video Section
           _buildHeaderSection('Tutorial Video', isDarkMode),
           const SizedBox(height: 8),
           _buildVideoPlayer(isDarkMode),
-          SizedBox(height: 20,),
+          
+          const SizedBox(height: 20),
           Divider(color: dividerColor, thickness: 3),
           const SizedBox(height: 20),
+          
+          // Similar Products Section
           _buildHeaderSection("Browse Similar Products", isDarkMode),
           SizedBox(
             height: 160,
@@ -894,9 +933,12 @@ void initState() {
               },
             ),
           ),
+          
           const SizedBox(height: 20),
           Divider(color: dividerColor, thickness: 3),
           const SizedBox(height: 20),
+          
+          // Top Selling Products Section
           _buildHeaderSection("Top Selling Products", isDarkMode),
           SizedBox(
             height: 160,
@@ -1047,7 +1089,6 @@ void initState() {
             children: [
               player,
               const SizedBox(height: 8),
-              // No VideoProgressIndicator for YouTube as it's already shown in the player
             ],
           );
         },
@@ -1193,24 +1234,17 @@ void initState() {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Image Section - UPDATED with OptimizedImage
               SizedBox(
                 height: 90,
                 width: double.infinity,
                 child: Center(
                   child: Padding(
                     padding: const EdgeInsets.all(6.0),
-                    child: _getEffectiveImageUrl(product.imageUrl).startsWith('http')
-                        ? Image.network(
-                      _getEffectiveImageUrl(product.imageUrl),
+                    child: OptimizedImage(
+                      imageUrl: _getEffectiveImageUrl(product.imageUrl),
                       fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) => Image.asset(
-                        'assets/placeholder.png',
-                        fit: BoxFit.contain,
-                      ),
-                    )
-                        : Image.asset(
-                      _getEffectiveImageUrl(product.imageUrl),
-                      fit: BoxFit.contain,
+                      placeholderAsset: 'assets/placeholder.png',
                     ),
                   ),
                 ),
@@ -1256,34 +1290,6 @@ void initState() {
                           ),
                       ],
                     ),
-                    // const SizedBox(height: 2),
-                    // Text('Unit: ${currentSelectedUnit.size}',
-                    //     style: GoogleFonts.poppins(fontSize: 9, color: themeOrange)),
-                    // const SizedBox(height: 6),
-                    // Container(
-                    //   height: 30,
-                    //   padding: const EdgeInsets.symmetric(horizontal: 6),
-                    //   decoration: BoxDecoration(
-                    //     border: Border.all(color: themeOrange),
-                    //     borderRadius: BorderRadius.circular(6),
-                    //     color: isDarkMode ? Colors.grey[800] : Colors.white,
-                    //   ),
-                    //   child: InkWell(
-                    //     onTap: () {
-                    //       _showSizeSelectionBottomSheet(context, product, isDarkMode);
-                    //     },
-                    //     child: Row(
-                    //       mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    //       children: [
-                    //         Text(
-                    //           currentSelectedUnit.size,
-                    //           style: GoogleFonts.poppins(fontSize: 10, color: textColor),
-                    //         ),
-                    //         Icon(Icons.arrow_drop_down, color: textColor, size: 16),
-                    //       ],
-                    //     ),
-                    //   ),
-                    // ),
                   ],
                 ),
               ),

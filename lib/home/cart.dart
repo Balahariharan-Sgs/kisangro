@@ -595,7 +595,7 @@ class _cartState extends State<Cart> {
                                         'Cart: Removed item ${item.proId}, Unit: ${item.selectedUnitSize}, New Total: ₹${cart.totalAmount}',
                                       );
                                     },
-                                    // 🔧 Step 3: Update onIncrement
+                                    // 🔧 Updated onIncrement
                                     onIncrement: () async {
                                       int newQty = item.quantity + 1;
                                       
@@ -607,7 +607,7 @@ class _cartState extends State<Cart> {
                                         'Cart: Incremented ${item.proId}, Quantity: ${item.quantity}, New Total: ₹${cart.totalAmount}',
                                       );
                                     },
-                                    // 🔧 Step 4: Update onDecrement
+                                    // 🔧 Updated onDecrement with dialog
                                     onDecrement: () async {
                                       if (item.quantity > 1) {
                                         int newQty = item.quantity - 1;
@@ -620,13 +620,19 @@ class _cartState extends State<Cart> {
                                           'Cart: Decremented ${item.proId}, Quantity: ${item.quantity}, New Total: ₹${cart.totalAmount}',
                                         );
                                       } else {
-                                        await cart.removeItem(item.proId);
-                                        
-                                        // Clean up controller when item is removed
-                                        _qtyControllers.remove(item.proId);
-
-                                        debugPrint(
-                                          'Cart: Removed item ${item.proId}, Unit: ${item.selectedUnitSize}, New Total: ₹${cart.totalAmount}',
+                                        // Show confirmation dialog when decrementing from 1 to 0
+                                        _showDeleteConfirmationDialog(
+                                          context,
+                                          item,
+                                          () async {
+                                            await cart.removeItem(item.proId);
+                                            // Clean up controller when item is removed
+                                            _qtyControllers.remove(item.proId);
+                                            debugPrint(
+                                              'Cart: Removed item ${item.proId} via decrement to 0, Unit: ${item.selectedUnitSize}, New Total: ₹${cart.totalAmount}',
+                                            );
+                                          },
+                                          isDarkMode,
                                         );
                                       }
                                     },

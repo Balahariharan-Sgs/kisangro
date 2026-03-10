@@ -2,14 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:kisangro/home/theme_mode_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:kisangro/widgets/optimized_image.dart';
+import 'package:kisangro/services/image_cache_service.dart';
+import 'package:kisangro/services/image_preloader_service.dart';
 import 'package:kisangro/models/product_model.dart';
 import 'package:kisangro/services/product_service.dart';
-import 'package:kisangro/home/product.dart'; // Your existing ProductDetailPage
+import 'package:kisangro/home/product.dart';
 import 'package:kisangro/models/cart_model.dart';
 import 'package:kisangro/models/wishlist_model.dart';
-import 'package:collection/collection.dart'; // For firstWhereOrNull
-import 'package:shimmer/shimmer.dart'; // Add this import for shimmer effect
-import 'package:kisangro/home/product_size_selection_bottom_sheet.dart'; // Add this import
+import 'package:collection/collection.dart';
+import 'package:shimmer/shimmer.dart';
+import 'package:kisangro/home/product_size_selection_bottom_sheet.dart';
 
 class NewOnKisangroProductsScreen extends StatefulWidget {
   const NewOnKisangroProductsScreen({super.key});
@@ -19,13 +22,16 @@ class NewOnKisangroProductsScreen extends StatefulWidget {
 }
 
 class _NewOnKisangroProductsScreenState extends State<NewOnKisangroProductsScreen> {
-  List<Product> _allNewOnKisangroItems = []; // Store all new products initially
-  List<Product> _displayedNewOnKisangroItems = []; // Products currently displayed (filtered/sorted)
-  bool _isLoading = true; // Add loading state
-  String _errorMessage = ''; // Add error message state
+  List<Product> _allNewOnKisangroItems = [];
+  List<Product> _displayedNewOnKisangroItems = [];
+  bool _isLoading = true;
+  String _errorMessage = '';
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
-  String? _selectedSortBy; // 'price_asc', 'price_desc', 'alpha_asc', 'alpha_desc'
+  String? _selectedSortBy;
+
+  // Track preloaded images
+  final Set<String> _preloadedImageUrls = {};
 
   @override
   void initState() {
@@ -41,7 +47,6 @@ class _NewOnKisangroProductsScreenState extends State<NewOnKisangroProductsScree
     super.dispose();
   }
 
-  // Add this method for showing size selection bottom sheet
   void _showSizeSelectionBottomSheet(BuildContext context, Product product, bool isDarkMode) {
     showModalBottomSheet(
       context: context,
@@ -62,8 +67,12 @@ class _NewOnKisangroProductsScreenState extends State<NewOnKisangroProductsScree
       _errorMessage = '';
     });
     try {
-      _allNewOnKisangroItems = ProductService.getAllProducts(); // Load all products
-      _filterAndSortProducts(); // Apply initial filter/sort
+      _allNewOnKisangroItems = ProductService.getAllProducts();
+      _filterAndSortProducts();
+      
+      // Preload images for all products
+      _preloadProductImages();
+      
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -80,6 +89,40 @@ class _NewOnKisangroProductsScreenState extends State<NewOnKisangroProductsScree
     }
   }
 
+  void _preloadProductImages() {
+    final List<String> imageUrls = [];
+    for (final product in _allNewOnKisangroItems) {
+      final url = _getEffectiveImageUrl(product.imageUrl);
+      if (url.startsWith('http') && !_preloadedImageUrls.contains(url)) {
+        imageUrls.add(url);
+        _preloadedImageUrls.add(url);
+      }
+    }
+    if (imageUrls.isNotEmpty) {
+      ImageCacheService().preloadImages(imageUrls);
+    }
+  }
+
+  void _preloadNextImages(int startIndex) {
+    final int endIndex = (startIndex + 10).clamp(0, _displayedNewOnKisangroItems.length - 1);
+    final List<String> imageUrls = [];
+    
+    for (int i = startIndex; i <= endIndex; i++) {
+      if (i < _displayedNewOnKisangroItems.length) {
+        final product = _displayedNewOnKisangroItems[i];
+        final url = _getEffectiveImageUrl(product.imageUrl);
+        if (url.startsWith('http') && !_preloadedImageUrls.contains(url)) {
+          imageUrls.add(url);
+          _preloadedImageUrls.add(url);
+        }
+      }
+    }
+    
+    if (imageUrls.isNotEmpty) {
+      ImageCacheService().preloadImages(imageUrls);
+    }
+  }
+
   void _onSearchChanged() {
     setState(() {
       _searchQuery = _searchController.text.toLowerCase();
@@ -88,9 +131,8 @@ class _NewOnKisangroProductsScreenState extends State<NewOnKisangroProductsScree
   }
 
   void _filterAndSortProducts() {
-    List<Product> results = List.from(_allNewOnKisangroItems); // Start with all new items
+    List<Product> results = List.from(_allNewOnKisangroItems);
 
-    // Apply search filter
     if (_searchQuery.isNotEmpty) {
       results = results.where((product) {
         return product.title.toLowerCase().contains(_searchQuery) ||
@@ -99,10 +141,8 @@ class _NewOnKisangroProductsScreenState extends State<NewOnKisangroProductsScree
       }).toList();
     }
 
-    // Apply sorting
     if (_selectedSortBy != null) {
       results.sort((a, b) {
-        // Use sellingPricePerSelectedUnit for sorting if available, otherwise fallback to pricePerSelectedUnit (MRP)
         final double priceA = a.sellingPricePerSelectedUnit ?? a.pricePerSelectedUnit ?? 0.0;
         final double priceB = b.sellingPricePerSelectedUnit ?? b.pricePerSelectedUnit ?? 0.0;
 
@@ -116,7 +156,7 @@ class _NewOnKisangroProductsScreenState extends State<NewOnKisangroProductsScree
           case 'alpha_desc':
             return b.title.toLowerCase().compareTo(a.title.toLowerCase());
           default:
-            return 0; // No sorting
+            return 0;
         }
       });
     }
@@ -124,12 +164,18 @@ class _NewOnKisangroProductsScreenState extends State<NewOnKisangroProductsScree
     setState(() {
       _displayedNewOnKisangroItems = results;
     });
+    
+    // Preload first few images after filtering
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _preloadNextImages(0);
+    });
   }
 
-  // Helper function to determine the effective image URL
   String _getEffectiveImageUrl(String rawImageUrl) {
-    if (rawImageUrl.isEmpty || rawImageUrl == 'https://sgserp.in/erp/api/' || (Uri.tryParse(rawImageUrl)?.isAbsolute != true && !rawImageUrl.startsWith('assets/'))) {
-      return ProductService.getRandomValidImageUrl(); // Fallback to a random valid API image
+    if (rawImageUrl.isEmpty || 
+        rawImageUrl == 'https://sgserp.in/erp/api/' || 
+        (Uri.tryParse(rawImageUrl)?.isAbsolute != true && !rawImageUrl.startsWith('assets/'))) {
+      return ProductService.getRandomValidImageUrl();
     }
     return rawImageUrl;
   }
@@ -137,79 +183,94 @@ class _NewOnKisangroProductsScreenState extends State<NewOnKisangroProductsScree
   Widget _buildSearchBarAndSort(bool isDarkMode) {
     final isTablet = MediaQuery.of(context).size.shortestSide >= 600;
 
-    // Define colors based on theme
     final Color searchBarFillColor = isDarkMode ? Colors.grey[800]! : Colors.white;
     final Color hintTextColor = isDarkMode ? Colors.white70 : Colors.grey[600]!;
     final Color prefixIconColor = isDarkMode ? Colors.white70 : const Color(0xffEB7720);
     final Color suffixIconColor = isDarkMode ? Colors.white70 : Colors.grey;
     final Color textColor = isDarkMode ? Colors.white : Colors.black;
     final Color dropdownFillColor = isDarkMode ? Colors.grey[800]! : Colors.white;
-    final Color dropdownBorderColor = isDarkMode ? Colors.grey[700]! : Colors.transparent; // Transparent for no border in light mode
+    final Color dropdownBorderColor = isDarkMode ? Colors.grey[700]! : Colors.transparent;
 
     return Padding(
       padding: const EdgeInsets.all(12.0),
       child: Column(
         children: [
-          // Search Bar
           TextField(
             controller: _searchController,
             decoration: InputDecoration(
               hintText: 'Search new products...',
-              hintStyle: GoogleFonts.poppins(color: hintTextColor), // Apply theme color
-              prefixIcon: Icon(Icons.search, color: prefixIconColor, size: isTablet ? 28 : 24), // Apply theme color
+              hintStyle: GoogleFonts.poppins(color: hintTextColor),
+              prefixIcon: Icon(Icons.search, color: prefixIconColor, size: isTablet ? 28 : 24),
               suffixIcon: _searchController.text.isNotEmpty
                   ? IconButton(
-                icon: Icon(Icons.clear, color: suffixIconColor, size: isTablet ? 28 : 24), // Apply theme color
-                onPressed: () {
-                  _searchController.clear();
-                  _filterAndSortProducts();
-                },
-              )
+                      icon: Icon(Icons.clear, color: suffixIconColor, size: isTablet ? 28 : 24),
+                      onPressed: () {
+                        _searchController.clear();
+                        _filterAndSortProducts();
+                      },
+                    )
                   : null,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide.none,
               ),
               filled: true,
-              fillColor: searchBarFillColor, // Apply theme color
+              fillColor: searchBarFillColor,
               contentPadding: EdgeInsets.symmetric(vertical: isTablet ? 20.0 : 12.0, horizontal: 16.0),
             ),
-            style: GoogleFonts.poppins(fontSize: isTablet ? 18 : 14, color: textColor), // Apply theme color
+            style: GoogleFonts.poppins(fontSize: isTablet ? 18 : 14, color: textColor),
           ),
           const SizedBox(height: 10),
-          // Sort By Dropdown (Smaller and to the right)
           Align(
-            alignment: Alignment.centerRight, // Align to the right
+            alignment: Alignment.centerRight,
             child: SizedBox(
-              width: isTablet ? 200 : 160, // Smaller width for dropdown
+              width: isTablet ? 200 : 160,
               child: DropdownButtonFormField<String>(
                 value: _selectedSortBy,
-                hint: Text('Sort By', style: GoogleFonts.poppins(fontSize: isTablet ? 14 : 12, color: hintTextColor)), // Apply theme color
+                hint: Text(
+                  'Sort By',
+                  style: GoogleFonts.poppins(fontSize: isTablet ? 14 : 12, color: hintTextColor),
+                ),
                 decoration: InputDecoration(
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: dropdownBorderColor), // Apply theme color
+                    borderSide: BorderSide(color: dropdownBorderColor),
                   ),
                   filled: true,
-                  fillColor: dropdownFillColor, // Apply theme color
-                  contentPadding: EdgeInsets.symmetric(vertical: isTablet ? 12.0 : 8.0, horizontal: 12.0), // Smaller padding
+                  fillColor: dropdownFillColor,
+                  contentPadding: EdgeInsets.symmetric(vertical: isTablet ? 12.0 : 8.0, horizontal: 12.0),
                 ),
                 items: [
-                  DropdownMenuItem(value: null, child: Text('Relevance', style: GoogleFonts.poppins(color: textColor))), // Apply theme color
-                  DropdownMenuItem(value: 'price_high_to_low', child: Text('Price: High to Low', style: GoogleFonts.poppins(color: textColor))), // Apply theme color
-                  DropdownMenuItem(value: 'price_low_to_high', child: Text('Price: Low to High', style: GoogleFonts.poppins(color: textColor))), // Apply theme color
-                  DropdownMenuItem(value: 'alpha_asc', child: Text('Name: A to Z', style: GoogleFonts.poppins(color: textColor))), // Apply theme color
-                  DropdownMenuItem(value: 'alpha_desc', child: Text('Name: Z to A', style: GoogleFonts.poppins(color: textColor))), // Apply theme color
+                  DropdownMenuItem(
+                    value: null,
+                    child: Text('Relevance', style: GoogleFonts.poppins(color: textColor)),
+                  ),
+                  DropdownMenuItem(
+                    value: 'price_high_to_low',
+                    child: Text('Price: High to Low', style: GoogleFonts.poppins(color: textColor)),
+                  ),
+                  DropdownMenuItem(
+                    value: 'price_low_to_high',
+                    child: Text('Price: Low to High', style: GoogleFonts.poppins(color: textColor)),
+                  ),
+                  DropdownMenuItem(
+                    value: 'alpha_asc',
+                    child: Text('Name: A to Z', style: GoogleFonts.poppins(color: textColor)),
+                  ),
+                  DropdownMenuItem(
+                    value: 'alpha_desc',
+                    child: Text('Name: Z to A', style: GoogleFonts.poppins(color: textColor)),
+                  ),
                 ],
                 onChanged: (value) {
                   setState(() {
                     _selectedSortBy = value;
-                    _filterAndSortProducts(); // Re-run filter/sort with new option
+                    _filterAndSortProducts();
                   });
                 },
-                style: GoogleFonts.poppins(fontSize: isTablet ? 14 : 12, color: textColor), // Apply theme color
-                iconSize: isTablet ? 24 : 20, // Smaller icon size
-                dropdownColor: dropdownFillColor, // Set dropdown menu background color
+                style: GoogleFonts.poppins(fontSize: isTablet ? 14 : 12, color: textColor),
+                iconSize: isTablet ? 24 : 20,
+                dropdownColor: dropdownFillColor,
               ),
             ),
           ),
@@ -218,12 +279,10 @@ class _NewOnKisangroProductsScreenState extends State<NewOnKisangroProductsScree
     );
   }
 
-  // Add shimmer effect widget
   Widget _buildShimmerGrid(bool isDarkMode) {
     final orientation = MediaQuery.of(context).orientation;
     final isTablet = MediaQuery.of(context).size.shortestSide >= 600;
 
-    // Determine crossAxisCount and childAspectRatio based on orientation and device type
     int crossAxisCount;
     double childAspectRatio;
 
@@ -231,11 +290,11 @@ class _NewOnKisangroProductsScreenState extends State<NewOnKisangroProductsScree
       if (orientation == Orientation.portrait) {
         crossAxisCount = 3;
         childAspectRatio = 0.90;
-      } else { // Orientation.landscape
+      } else {
         crossAxisCount = 5;
         childAspectRatio = 1.0;
       }
-    } else { // Mobile phones
+    } else {
       crossAxisCount = 2;
       childAspectRatio = 1.20;
     }
@@ -251,7 +310,7 @@ class _NewOnKisangroProductsScreenState extends State<NewOnKisangroProductsScree
         mainAxisSpacing: 12,
         childAspectRatio: childAspectRatio,
       ),
-      itemCount: 6, // Number of shimmer placeholders
+      itemCount: 6,
       itemBuilder: (context, index) {
         return Shimmer.fromColors(
           baseColor: baseColor,
@@ -317,7 +376,6 @@ class _NewOnKisangroProductsScreenState extends State<NewOnKisangroProductsScree
     final themeMode = Provider.of<ThemeModeProvider>(context).themeMode;
     final isDarkMode = themeMode == ThemeMode.dark;
 
-    // Determine crossAxisCount and childAspectRatio based on orientation and device type
     int crossAxisCount;
     double childAspectRatio;
 
@@ -326,22 +384,19 @@ class _NewOnKisangroProductsScreenState extends State<NewOnKisangroProductsScree
         crossAxisCount = 3;
         childAspectRatio = 0.80;
       } else {
-        // Orientation.landscape
         crossAxisCount = 5;
         childAspectRatio = 1.0;
       }
     } else {
-      // Mobile phones
       crossAxisCount = 2;
       childAspectRatio = 1.00;
     }
 
-    // Define colors based on theme
     final Color backgroundColor = isDarkMode ? Colors.black : const Color(0xFFFFF7F1);
     final Color gradientStartColor = isDarkMode ? Colors.black : const Color(0xffFFD9BD);
     final Color gradientEndColor = isDarkMode ? Colors.black : const Color(0xffFFFFFF);
     final Color infoTextColor = isDarkMode ? Colors.grey[300]! : Colors.grey[600]!;
-    final Color orangeColor = const Color(0xffEB7720); // Orange color, remains constant
+    final Color orangeColor = const Color(0xffEB7720);
     final Color errorTextColor = isDarkMode ? Colors.red[300]! : Colors.red;
 
     return Scaffold(
@@ -349,7 +404,7 @@ class _NewOnKisangroProductsScreenState extends State<NewOnKisangroProductsScree
         backgroundColor: orangeColor,
         elevation: 0,
         title: Text(
-          "New On Kisangro", // Correct title for this screen
+          "New On Kisangro",
           style: GoogleFonts.poppins(color: Colors.white, fontSize: 18),
         ),
         leading: IconButton(
@@ -364,80 +419,93 @@ class _NewOnKisangroProductsScreenState extends State<NewOnKisangroProductsScree
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [gradientStartColor, gradientEndColor], // Apply theme colors
+            colors: [gradientStartColor, gradientEndColor],
           ),
         ),
         child: Column(
           children: [
-            _buildSearchBarAndSort(isDarkMode), // Add search bar and sort dropdown, pass isDarkMode
+            _buildSearchBarAndSort(isDarkMode),
             Expanded(
               child: _isLoading
-                  ? _buildShimmerGrid(isDarkMode) // Show shimmer effect while loading
+                  ? _buildShimmerGrid(isDarkMode)
                   : _errorMessage.isNotEmpty
-                  ? Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Text(
-                    _errorMessage,
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.poppins(color: errorTextColor, fontSize: 16),
-                  ),
-                ),
-              )
-                  : _displayedNewOnKisangroItems.isEmpty
-                  ? Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.info_outline,
-                      size: 80,
-                      color: isDarkMode ? Colors.grey[600] : Colors.grey[400], // Apply theme color
-                    ),
-                    const SizedBox(height: 20),
-                    Text(
-                      _searchQuery.isNotEmpty
-                          ? 'No new products found matching "${_searchController.text}"!'
-                          : 'No new products available right now!',
-                      style: GoogleFonts.poppins(
-                        fontSize: 18,
-                        color: infoTextColor, // Apply theme color
-                        fontWeight: FontWeight.bold,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              )
-                  : Padding(
-                padding: const EdgeInsets.all(12.0),
-                child: GridView.builder(
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: crossAxisCount,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                    childAspectRatio: childAspectRatio,
-                  ),
-                  itemCount: _displayedNewOnKisangroItems.length,
-                  itemBuilder: (context, index) {
-                    final product = _displayedNewOnKisangroItems[index];
-                    return ChangeNotifierProvider<Product>.value( // Wrap with Provider
-                      value: product,
-                      child: GestureDetector(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => ProductDetailPage(product: product),
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Text(
+                              _errorMessage,
+                              textAlign: TextAlign.center,
+                              style: GoogleFonts.poppins(color: errorTextColor, fontSize: 16),
                             ),
-                          );
-                        },
-                        child: _buildProductTile(context, product, isDarkMode), // Pass isDarkMode
-                      ),
-                    );
-                  },
-                ),
-              ),
+                          ),
+                        )
+                      : _displayedNewOnKisangroItems.isEmpty
+                          ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.info_outline,
+                                    size: 80,
+                                    color: isDarkMode ? Colors.grey[600] : Colors.grey[400],
+                                  ),
+                                  const SizedBox(height: 20),
+                                  Text(
+                                    _searchQuery.isNotEmpty
+                                        ? 'No new products found matching "${_searchController.text}"!'
+                                        : 'No new products available right now!',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 18,
+                                      color: infoTextColor,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
+                              ),
+                            )
+                          : NotificationListener<ScrollNotification>(
+                              onNotification: (scrollInfo) {
+                                if (scrollInfo.metrics.pixels >=
+                                    scrollInfo.metrics.maxScrollExtent * 0.7) {
+                                  final int currentIndex = (scrollInfo.metrics.pixels /
+                                          scrollInfo.metrics.maxScrollExtent *
+                                          _displayedNewOnKisangroItems.length)
+                                      .toInt();
+                                  _preloadNextImages(currentIndex);
+                                }
+                                return true;
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.all(12.0),
+                                child: GridView.builder(
+                                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: crossAxisCount,
+                                    crossAxisSpacing: 12,
+                                    mainAxisSpacing: 12,
+                                    childAspectRatio: childAspectRatio,
+                                  ),
+                                  itemCount: _displayedNewOnKisangroItems.length,
+                                  itemBuilder: (context, index) {
+                                    final product = _displayedNewOnKisangroItems[index];
+                                    return ChangeNotifierProvider<Product>.value(
+                                      value: product,
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) => ProductDetailPage(product: product),
+                                            ),
+                                          );
+                                        },
+                                        child: _buildProductTile(context, product, isDarkMode),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
             ),
           ],
         ),
@@ -446,24 +514,21 @@ class _NewOnKisangroProductsScreenState extends State<NewOnKisangroProductsScree
   }
 
   Widget _buildProductTile(BuildContext context, Product product, bool isDarkMode) {
-    final Color themeOrange = const Color(0xffEB7720); // Your app's theme color
+    final Color themeOrange = const Color(0xffEB7720);
     final Color cardBackgroundColor = isDarkMode ? Colors.grey[900]! : Colors.white;
     final Color borderColor = isDarkMode ? Colors.grey[700]! : Colors.grey.shade300;
     final Color textColor = isDarkMode ? Colors.white : Colors.black;
     final Color greyTextColor = isDarkMode ? Colors.grey[400]! : Colors.grey;
 
-    return Consumer<Product>( // Consume the product to react to its selectedUnit changes
+    return Consumer<Product>(
       builder: (context, product, child) {
-        // Ensure availableSizes is never empty to prevent errors in DropdownButton.
         final List<ProductSize> effectiveAvailableSizes = product.availableSizes.isNotEmpty
             ? product.availableSizes
-            : [ProductSize(proId: 0, size: 'Unit', price: 0.0, sellingPrice: 0.0)]; // FIX 1: Add proId to fallback
+            : [ProductSize(proId: 0, size: 'Unit', price: 0.0, sellingPrice: 0.0)];
 
-        // Resolve the selected unit for the dropdown.
-        // Find if product.selectedUnit exists in effectiveAvailableSizes.
         ProductSize currentSelectedUnit = effectiveAvailableSizes.firstWhere(
-              (sizeOption) => sizeOption.proId == product.selectedUnit.proId, // Compare by proId
-          orElse: () => effectiveAvailableSizes.first, // Fallback to first if not found
+          (sizeOption) => sizeOption.proId == product.selectedUnit.proId,
+          orElse: () => effectiveAvailableSizes.first,
         );
 
         final double? currentMrp = product.pricePerSelectedUnit;
@@ -471,14 +536,13 @@ class _NewOnKisangroProductsScreenState extends State<NewOnKisangroProductsScree
 
         return Container(
           decoration: BoxDecoration(
-            color: cardBackgroundColor, // Apply theme color
+            color: cardBackgroundColor,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: borderColor), // Apply theme color
+            border: Border.all(color: borderColor),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              /// IMAGE
               Container(
                 height: 100,
                 width: double.infinity,
@@ -487,23 +551,15 @@ class _NewOnKisangroProductsScreenState extends State<NewOnKisangroProductsScree
                     Center(
                       child: Padding(
                         padding: const EdgeInsets.all(8.0),
-                        child: _getEffectiveImageUrl(product.imageUrl).startsWith('http')
-                            ? Image.network(
-                                _getEffectiveImageUrl(product.imageUrl),
-                                fit: BoxFit.contain,
-                                errorBuilder: (context, error, stackTrace) => Image.asset(
-                                  'assets/placeholder.png', // Fallback to local placeholder if network image fails
-                                  fit: BoxFit.contain,
-                                ),
-                              )
-                            : Image.asset(
-                                _getEffectiveImageUrl(product.imageUrl), // This will now use the dynamic fallback if rawImageUrl is empty
-                                fit: BoxFit.contain,
-                              ),
+                        child: OptimizedImage(
+                          imageUrl: _getEffectiveImageUrl(product.imageUrl),
+                          fit: BoxFit.contain,
+                          placeholderAsset: 'assets/placeholder.png',
+                          width: 84,
+                          height: 84,
+                        ),
                       ),
                     ),
-
-                    /// Wishlist icon (top right)
                     Positioned(
                       top: 4,
                       right: 4,
@@ -548,8 +604,6 @@ class _NewOnKisangroProductsScreenState extends State<NewOnKisangroProductsScree
                   ],
                 ),
               ),
-
-              /// DETAILS
               Padding(
                 padding: const EdgeInsets.fromLTRB(8, 2, 6, 6),
                 child: Column(
@@ -576,7 +630,6 @@ class _NewOnKisangroProductsScreenState extends State<NewOnKisangroProductsScree
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
-
                     Row(
                       children: [
                         Flexible(

@@ -14,6 +14,9 @@ import 'package:shimmer/shimmer.dart';
 import 'package:kisangro/home/product_size_selection_bottom_sheet.dart';
 import 'dart:async';
 import 'package:kisangro/home/search_bar.dart';
+import 'package:kisangro/widgets/optimized_image.dart';
+import 'package:kisangro/services/image_cache_service.dart';
+import 'package:kisangro/services/image_preloader_service.dart';
 
 class CategoryProductsScreen extends StatefulWidget {
   final String categoryTitle;
@@ -55,20 +58,23 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
     _fetchCategoryProducts(initialLoad: true);
     _scrollController.addListener(_onScroll);
     _searchController.addListener(_onSearchChanged);
-
-    // Initialize search overlay listeners
     _searchFocusNode.addListener(_onFocusChange);
+    
+    // Preload category images
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ImagePreloaderService().preloadCategoryImages(widget.categoryId);
+    });
   }
 
- @override
-void dispose() {
-  _removeOverlay(); // FIRST
-  _debounce?.cancel();
-  _scrollController.dispose();
-  _searchController.dispose();
-  _searchFocusNode.dispose();
-  super.dispose();
-}
+  @override
+  void dispose() {
+    _removeOverlay(); // FIRST
+    _debounce?.cancel();
+    _scrollController.dispose();
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    super.dispose();
+  }
 
   void _onFocusChange() {
     if (!mounted) return;
@@ -155,28 +161,11 @@ void dispose() {
                                 height: 40,
                                 child: AspectRatio(
                                   aspectRatio: 1.0,
-                                  child:
-                                      _getEffectiveImageUrl(
-                                            product.imageUrl,
-                                          ).startsWith('http')
-                                          ? Image.network(
-                                            _getEffectiveImageUrl(
-                                              product.imageUrl,
-                                            ),
-                                            fit: BoxFit.contain,
-                                            errorBuilder:
-                                                (context, error, stackTrace) =>
-                                                    Image.asset(
-                                                      'assets/placeholder.png',
-                                                      fit: BoxFit.contain,
-                                                    ),
-                                          )
-                                          : Image.asset(
-                                            _getEffectiveImageUrl(
-                                              product.imageUrl,
-                                            ),
-                                            fit: BoxFit.contain,
-                                          ),
+                                  child: OptimizedImage(
+                                    imageUrl: _getEffectiveImageUrl(product.imageUrl),
+                                    fit: BoxFit.contain,
+                                    placeholderAsset: 'assets/placeholder.png',
+                                  ),
                                 ),
                               ),
                               title: Text(
@@ -297,6 +286,23 @@ void dispose() {
     return rawImageUrl;
   }
 
+  void _preloadNextImages() {
+    final int currentLastIndex = _displayedProducts.length - 1;
+    final int preloadStartIndex = currentLastIndex + 1;
+    final int preloadEndIndex = (preloadStartIndex + 5).clamp(0, _allProducts.length - 1);
+    
+    for (int i = preloadStartIndex; i <= preloadEndIndex; i++) {
+      if (i < _allProducts.length) {
+        final product = _allProducts[i];
+        final imageUrl = _getEffectiveImageUrl(product.imageUrl);
+        if (imageUrl.startsWith('http')) {
+          // Trigger caching in background
+          ImageCacheService().preloadImages([imageUrl]);
+        }
+      }
+    }
+  }
+
   void _onScroll() {
     if (!mounted ||
         !_hasMore ||
@@ -304,6 +310,13 @@ void dispose() {
         _isLoading ||
         _searchQuery.isNotEmpty)
       return;
+    
+    // Preload images when user is near the end
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent * 0.7) {
+      _preloadNextImages();
+    }
+    
     if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent * 0.9) {
       _loadMoreProducts();
@@ -361,6 +374,14 @@ void dispose() {
           _isLoadingMore = false;
           _filterAndDisplayProducts();
         });
+        
+        // Preload images for the first batch of products
+        final List<String> imageUrls = fetchedProducts
+            .take(10)
+            .map((p) => _getEffectiveImageUrl(p.imageUrl))
+            .where((url) => url.startsWith('http'))
+            .toList();
+        ImageCacheService().preloadImages(imageUrls);
       }
     } catch (e) {
       debugPrint(
@@ -408,6 +429,13 @@ void dispose() {
           _isLoadingMore = false;
           _filterAndDisplayProducts();
         });
+        
+        // Preload images for newly loaded products
+        final List<String> imageUrls = fetchedProducts
+            .map((p) => _getEffectiveImageUrl(p.imageUrl))
+            .where((url) => url.startsWith('http'))
+            .toList();
+        ImageCacheService().preloadImages(imageUrls);
       }
     } catch (e) {
       debugPrint(
@@ -764,7 +792,7 @@ void dispose() {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              /// IMAGE
+              /// IMAGE - UPDATED with OptimizedImage
               Container(
                 height: 100,
                 width: double.infinity,
@@ -775,19 +803,11 @@ void dispose() {
                         padding: const EdgeInsets.all(8.0),
                         child: AspectRatio(
                           aspectRatio: 1.0,
-                          child: _getEffectiveImageUrl(product.imageUrl).startsWith('http')
-                              ? Image.network(
-                                  _getEffectiveImageUrl(product.imageUrl),
-                                  fit: BoxFit.contain,
-                                  errorBuilder: (context, error, stackTrace) => Image.asset(
-                                    'assets/placeholder.png',
-                                    fit: BoxFit.contain,
-                                  ),
-                                )
-                              : Image.asset(
-                                  _getEffectiveImageUrl(product.imageUrl),
-                                  fit: BoxFit.contain,
-                                ),
+                          child: OptimizedImage(
+                            imageUrl: _getEffectiveImageUrl(product.imageUrl),
+                            fit: BoxFit.contain,
+                            placeholderAsset: 'assets/placeholder.png',
+                          ),
                         ),
                       ),
                     ),

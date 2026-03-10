@@ -377,13 +377,7 @@ class _AskUsPageState extends State<AskUsPage> {
                                   ],
                                 ),
 
-                                const Spacer(),
-
-                                const Icon(
-                                  Icons.arrow_forward_ios_rounded,
-                                  color: Colors.white70,
-                                  size: 16,
-                                ),
+                            
                               ],
                             ),
                           ),

@@ -637,36 +637,56 @@ class _deliveryState extends State<delivery> {
                     const SizedBox(height: 16),
                     
                     // Price Breakdown
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: cardBackgroundColor,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: cardBorderColor),
-                      ),
-                      child: Column(
-                        children: [
-                          _buildPriceRow('Subtotal', '₹ ${subTotal.toStringAsFixed(2)}', isDarkMode: isDarkMode),
-                          const SizedBox(height: 8),
-                          _buildPriceRow('Shipping Fee', '₹ $shippingFee', isDarkMode: isDarkMode),
-                          const SizedBox(height: 8),
-                          SizedBox(
-                            width: double.infinity,
-                            height: 1,
-                            child: CustomPaint(
-                              painter: DottedLinePainter(color: dottedLineColor),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          _buildPriceRow(
-                            'Grand Total', 
-                            '₹ ${grandTotal.toStringAsFixed(2)}', 
-                            isGrandTotal: true, 
-                            isDarkMode: isDarkMode
-                          ),
-                        ],
-                      ),
-                    ),
+                   Container(
+  padding: const EdgeInsets.all(12),
+  decoration: BoxDecoration(
+    color: cardBackgroundColor,
+    borderRadius: BorderRadius.circular(8),
+    border: Border.all(color: cardBorderColor),
+  ),
+  child: Column(
+    children: [
+
+      /// 🔹 PRODUCT BREAKDOWN
+      ...items.map((cartItem) {
+        final double itemTotal =
+            cartItem.pricePerUnit * cartItem.quantity;
+
+        return Column(
+          children: [
+            _buildPriceRow(
+              "${cartItem.title} (${cartItem.quantity})",
+              "₹ ${itemTotal.toStringAsFixed(2)}",
+              isDarkMode: isDarkMode,
+            ),
+            const SizedBox(height: 8),
+          ],
+        );
+      }).toList(),
+
+      /// 🔹 DOTTED LINE
+      SizedBox(
+        width: double.infinity,
+        height: 1,
+        child: CustomPaint(
+          painter: DottedLinePainter(color: dottedLineColor),
+        ),
+      ),
+
+      const SizedBox(height: 8),
+
+      /// 🔹 GRAND TOTAL
+      _buildPriceRow(
+        'Grand Total',
+        '₹ ${grandTotal.toStringAsFixed(2)}',
+        isGrandTotal: true,
+        isDarkMode: isDarkMode,
+      ),
+    ],
+  ),
+),
+
+                 
                   ],
                 ),
               ),

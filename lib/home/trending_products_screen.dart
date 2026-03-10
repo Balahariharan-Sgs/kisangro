@@ -2,15 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:kisangro/home/theme_mode_provider.dart';
 import 'package:provider/provider.dart';
-import 'package:collection/collection.dart'; // For firstWhereOrNull
-import 'package:shimmer/shimmer.dart'; // Add this import
+import 'package:collection/collection.dart';
+import 'package:shimmer/shimmer.dart';
+import 'package:kisangro/widgets/optimized_image.dart';
+import 'package:kisangro/services/image_cache_service.dart';
+import 'package:kisangro/services/image_preloader_service.dart';
 
 import 'package:kisangro/models/product_model.dart';
 import 'package:kisangro/services/product_service.dart';
-import 'package:kisangro/home/product.dart'; // ProductDetailPage
-import 'package:kisangro/models/cart_model.dart'; // CartModel
-import 'package:kisangro/models/wishlist_model.dart'; // WishlistModel
-import 'package:kisangro/home/product_size_selection_bottom_sheet.dart'; // Add this import
+import 'package:kisangro/home/product.dart';
+import 'package:kisangro/models/cart_model.dart';
+import 'package:kisangro/models/wishlist_model.dart';
+import 'package:kisangro/home/product_size_selection_bottom_sheet.dart';
 
 class TrendingProductsScreen extends StatefulWidget {
   const TrendingProductsScreen({super.key});
@@ -20,15 +23,16 @@ class TrendingProductsScreen extends StatefulWidget {
 }
 
 class _TrendingProductsScreenState extends State<TrendingProductsScreen> {
-  List<Product> _allProducts = []; // Store all products initially
-  List<Product> _displayedProducts =
-      []; // Products currently displayed (filtered/sorted)
+  List<Product> _allProducts = [];
+  List<Product> _displayedProducts = [];
   bool _isLoading = true;
   String _errorMessage = '';
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
-  String?
-  _selectedSortBy; // 'price_asc', 'price_desc', 'alpha_asc', 'alpha_desc'
+  String? _selectedSortBy;
+
+  // Track preloaded images
+  final Set<String> _preloadedImageUrls = {};
 
   @override
   void initState() {
@@ -50,10 +54,12 @@ class _TrendingProductsScreenState extends State<TrendingProductsScreen> {
       _errorMessage = '';
     });
     try {
-      // Assuming ProductService.getAllProducts() is already loading from API
-      // and provides all products. If not, you'd need a specific API call here.
       _allProducts = ProductService.getAllProducts();
-      _filterAndSortProducts(); // Apply initial filter/sort
+      _filterAndSortProducts();
+      
+      // Preload images for all products
+      _preloadProductImages();
+      
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -70,6 +76,40 @@ class _TrendingProductsScreenState extends State<TrendingProductsScreen> {
     }
   }
 
+  void _preloadProductImages() {
+    final List<String> imageUrls = [];
+    for (final product in _allProducts) {
+      final url = _getEffectiveImageUrl(product.imageUrl);
+      if (url.startsWith('http') && !_preloadedImageUrls.contains(url)) {
+        imageUrls.add(url);
+        _preloadedImageUrls.add(url);
+      }
+    }
+    if (imageUrls.isNotEmpty) {
+      ImageCacheService().preloadImages(imageUrls);
+    }
+  }
+
+  void _preloadNextImages(int startIndex) {
+    final int endIndex = (startIndex + 10).clamp(0, _displayedProducts.length - 1);
+    final List<String> imageUrls = [];
+    
+    for (int i = startIndex; i <= endIndex; i++) {
+      if (i < _displayedProducts.length) {
+        final product = _displayedProducts[i];
+        final url = _getEffectiveImageUrl(product.imageUrl);
+        if (url.startsWith('http') && !_preloadedImageUrls.contains(url)) {
+          imageUrls.add(url);
+          _preloadedImageUrls.add(url);
+        }
+      }
+    }
+    
+    if (imageUrls.isNotEmpty) {
+      ImageCacheService().preloadImages(imageUrls);
+    }
+  }
+
   void _onSearchChanged() {
     setState(() {
       _searchQuery = _searchController.text.toLowerCase();
@@ -78,22 +118,18 @@ class _TrendingProductsScreenState extends State<TrendingProductsScreen> {
   }
 
   void _filterAndSortProducts() {
-    List<Product> results = List.from(_allProducts); // Start with all products
+    List<Product> results = List.from(_allProducts);
 
-    // Apply search filter
     if (_searchQuery.isNotEmpty) {
-      results =
-          results.where((product) {
-            return product.title.toLowerCase().contains(_searchQuery) ||
-                product.subtitle.toLowerCase().contains(_searchQuery) ||
-                product.category.toLowerCase().contains(_searchQuery);
-          }).toList();
+      results = results.where((product) {
+        return product.title.toLowerCase().contains(_searchQuery) ||
+            product.subtitle.toLowerCase().contains(_searchQuery) ||
+            product.category.toLowerCase().contains(_searchQuery);
+      }).toList();
     }
 
-    // Apply sorting
     if (_selectedSortBy != null) {
       results.sort((a, b) {
-        // Use sellingPricePerSelectedUnit for sorting if available, otherwise fallback to pricePerSelectedUnit (MRP)
         final double priceA =
             a.sellingPricePerSelectedUnit ?? a.pricePerSelectedUnit ?? 0.0;
         final double priceB =
@@ -109,7 +145,7 @@ class _TrendingProductsScreenState extends State<TrendingProductsScreen> {
           case 'alpha_desc':
             return b.title.toLowerCase().compareTo(a.title.toLowerCase());
           default:
-            return 0; // No sorting
+            return 0;
         }
       });
     }
@@ -117,9 +153,13 @@ class _TrendingProductsScreenState extends State<TrendingProductsScreen> {
     setState(() {
       _displayedProducts = results;
     });
+    
+    // Preload first few images after filtering
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _preloadNextImages(0);
+    });
   }
 
-  // Helper function to determine the effective image URL
   String _getEffectiveImageUrl(String rawImageUrl) {
     if (rawImageUrl.isEmpty ||
         rawImageUrl == 'https://sgserp.in/erp/api/' ||
@@ -127,11 +167,9 @@ class _TrendingProductsScreenState extends State<TrendingProductsScreen> {
             !rawImageUrl.startsWith('assets/'))) {
       return ProductService.getRandomValidImageUrl();
     }
-    // Default case - return the raw URL or a placeholder
     return rawImageUrl.isNotEmpty ? rawImageUrl : 'assets/placeholder.png';
   }
 
-  // Add this method to show the size selection bottom sheet
   void _showSizeSelectionBottomSheet(
     BuildContext context,
     Product product,
@@ -153,7 +191,6 @@ class _TrendingProductsScreenState extends State<TrendingProductsScreen> {
   Widget _buildSearchBarAndSort(bool isDarkMode) {
     final isTablet = MediaQuery.of(context).size.shortestSide >= 600;
 
-    // Define colors based on theme
     final Color searchBarFillColor =
         isDarkMode ? Colors.grey[800]! : Colors.white;
     final Color hintTextColor = isDarkMode ? Colors.white70 : Colors.grey[600]!;
@@ -164,47 +201,41 @@ class _TrendingProductsScreenState extends State<TrendingProductsScreen> {
     final Color dropdownFillColor =
         isDarkMode ? Colors.grey[800]! : Colors.white;
     final Color dropdownBorderColor =
-        isDarkMode
-            ? Colors.grey[700]!
-            : Colors.transparent; // Transparent for no border in light mode
+        isDarkMode ? Colors.grey[700]! : Colors.transparent;
 
     return Padding(
       padding: const EdgeInsets.all(12.0),
       child: Column(
         children: [
-          // Search Bar
           TextField(
             controller: _searchController,
             decoration: InputDecoration(
               hintText: 'Search trending products...',
-              hintStyle: GoogleFonts.poppins(
-                color: hintTextColor,
-              ), // Apply theme color
+              hintStyle: GoogleFonts.poppins(color: hintTextColor),
               prefixIcon: Icon(
                 Icons.search,
                 color: prefixIconColor,
                 size: isTablet ? 28 : 24,
-              ), // Apply theme color
-              suffixIcon:
-                  _searchController.text.isNotEmpty
-                      ? IconButton(
-                        icon: Icon(
-                          Icons.clear,
-                          color: suffixIconColor,
-                          size: isTablet ? 28 : 24,
-                        ), // Apply theme color
-                        onPressed: () {
-                          _searchController.clear();
-                          _filterAndSortProducts();
-                        },
-                      )
-                      : null,
+              ),
+              suffixIcon: _searchController.text.isNotEmpty
+                  ? IconButton(
+                      icon: Icon(
+                        Icons.clear,
+                        color: suffixIconColor,
+                        size: isTablet ? 28 : 24,
+                      ),
+                      onPressed: () {
+                        _searchController.clear();
+                        _filterAndSortProducts();
+                      },
+                    )
+                  : null,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide.none,
               ),
               filled: true,
-              fillColor: searchBarFillColor, // Apply theme color
+              fillColor: searchBarFillColor,
               contentPadding: EdgeInsets.symmetric(
                 vertical: isTablet ? 20.0 : 12.0,
                 horizontal: 16.0,
@@ -213,14 +244,13 @@ class _TrendingProductsScreenState extends State<TrendingProductsScreen> {
             style: GoogleFonts.poppins(
               fontSize: isTablet ? 18 : 14,
               color: textColor,
-            ), // Apply theme color
+            ),
           ),
           const SizedBox(height: 10),
-          // Sort By Dropdown (Smaller and to the right)
           Align(
-            alignment: Alignment.centerRight, // Align to the right
+            alignment: Alignment.centerRight,
             child: SizedBox(
-              width: isTablet ? 200 : 160, // Smaller width for dropdown
+              width: isTablet ? 200 : 160,
               child: DropdownButtonFormField<String>(
                 value: _selectedSortBy,
                 hint: Text(
@@ -229,20 +259,18 @@ class _TrendingProductsScreenState extends State<TrendingProductsScreen> {
                     fontSize: isTablet ? 14 : 12,
                     color: hintTextColor,
                   ),
-                ), // Apply theme color
+                ),
                 decoration: InputDecoration(
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(
-                      color: dropdownBorderColor,
-                    ), // Apply theme color
+                    borderSide: BorderSide(color: dropdownBorderColor),
                   ),
                   filled: true,
-                  fillColor: dropdownFillColor, // Apply theme color
+                  fillColor: dropdownFillColor,
                   contentPadding: EdgeInsets.symmetric(
                     vertical: isTablet ? 12.0 : 8.0,
                     horizontal: 12.0,
-                  ), // Smaller padding
+                  ),
                 ),
                 items: [
                   DropdownMenuItem(
@@ -251,49 +279,48 @@ class _TrendingProductsScreenState extends State<TrendingProductsScreen> {
                       'Relevance',
                       style: GoogleFonts.poppins(color: textColor),
                     ),
-                  ), // Apply theme color
+                  ),
                   DropdownMenuItem(
                     value: 'price_high_to_low',
                     child: Text(
                       'Price: High to Low',
                       style: GoogleFonts.poppins(color: textColor),
                     ),
-                  ), // Apply theme color
+                  ),
                   DropdownMenuItem(
                     value: 'price_low_to_high',
                     child: Text(
                       'Price: Low to High',
                       style: GoogleFonts.poppins(color: textColor),
                     ),
-                  ), // Apply theme color
+                  ),
                   DropdownMenuItem(
                     value: 'alpha_asc',
                     child: Text(
                       'Name: A to Z',
                       style: GoogleFonts.poppins(color: textColor),
                     ),
-                  ), // Apply theme color
+                  ),
                   DropdownMenuItem(
                     value: 'alpha_desc',
                     child: Text(
                       'Name: Z to A',
                       style: GoogleFonts.poppins(color: textColor),
                     ),
-                  ), // Apply theme color
+                  ),
                 ],
                 onChanged: (value) {
                   setState(() {
                     _selectedSortBy = value;
-                    _filterAndSortProducts(); // Re-run filter/sort with new option
+                    _filterAndSortProducts();
                   });
                 },
                 style: GoogleFonts.poppins(
                   fontSize: isTablet ? 14 : 12,
                   color: textColor,
-                ), // Apply theme color
-                iconSize: isTablet ? 24 : 20, // Smaller icon size
-                dropdownColor:
-                    dropdownFillColor, // Set dropdown menu background color
+                ),
+                iconSize: isTablet ? 24 : 20,
+                dropdownColor: dropdownFillColor,
               ),
             ),
           ),
@@ -302,12 +329,10 @@ class _TrendingProductsScreenState extends State<TrendingProductsScreen> {
     );
   }
 
-  // Add shimmer effect widget
   Widget _buildShimmerGrid(bool isDarkMode) {
     final orientation = MediaQuery.of(context).orientation;
     final isTablet = MediaQuery.of(context).size.shortestSide >= 600;
 
-    // Determine crossAxisCount and childAspectRatio based on orientation and device type
     int crossAxisCount;
     double childAspectRatio;
 
@@ -316,12 +341,10 @@ class _TrendingProductsScreenState extends State<TrendingProductsScreen> {
         crossAxisCount = 3;
         childAspectRatio = 9.0;
       } else {
-        // Orientation.landscape
         crossAxisCount = 5;
         childAspectRatio = 1.0;
       }
     } else {
-      // Mobile phones
       crossAxisCount = 2;
       childAspectRatio = 1.20;
     }
@@ -338,7 +361,7 @@ class _TrendingProductsScreenState extends State<TrendingProductsScreen> {
         mainAxisSpacing: 12,
         childAspectRatio: childAspectRatio,
       ),
-      itemCount: 6, // Number of shimmer placeholders
+      itemCount: 6,
       itemBuilder: (context, index) {
         return Shimmer.fromColors(
           baseColor: baseColor,
@@ -412,27 +435,22 @@ class _TrendingProductsScreenState extends State<TrendingProductsScreen> {
     final themeMode = Provider.of<ThemeModeProvider>(context).themeMode;
     final isDarkMode = themeMode == ThemeMode.dark;
 
-    // Determine crossAxisCount and childAspectRatio based on orientation and device type
     int crossAxisCount;
     double childAspectRatio;
 
     if (isTablet) {
       if (orientation == Orientation.portrait) {
-        crossAxisCount = 3; // 3 tiles horizontally in portrait mode for tablets
-        childAspectRatio = 0.80; // Adjusted for vertical fit and medium size
+        crossAxisCount = 3;
+        childAspectRatio = 0.80;
       } else {
-        // Orientation.landscape
-        crossAxisCount =
-            5; // 5 tiles horizontally in landscape mode for tablets
-        childAspectRatio = 1.0; // Adjusted for shorter height
+        crossAxisCount = 5;
+        childAspectRatio = 1.0;
       }
     } else {
-      // Mobile phones
-      crossAxisCount = 2; // 2 tiles for mobile phones
-      childAspectRatio = 1.00; // Default for mobile
+      crossAxisCount = 2;
+      childAspectRatio = 1.00;
     }
 
-    // Define colors based on theme
     final Color backgroundColor =
         isDarkMode ? Colors.black : const Color(0xFFFFF7F1);
     final Color gradientStartColor =
@@ -441,16 +459,14 @@ class _TrendingProductsScreenState extends State<TrendingProductsScreen> {
         isDarkMode ? Colors.black : const Color(0xffFFFFFF);
     final Color infoTextColor =
         isDarkMode ? Colors.grey[300]! : Colors.grey[600]!;
-    final Color orangeColor = const Color(
-      0xffEB7720,
-    ); // Orange color, remains constant
+    final Color orangeColor = const Color(0xffEB7720);
 
     return Scaffold(
       appBar: AppBar(
         backgroundColor: orangeColor,
         elevation: 0,
         title: Text(
-          "Trending Products", // Correct title for this screen
+          "Trending Products",
           style: GoogleFonts.poppins(color: Colors.white, fontSize: 18),
         ),
         leading: IconButton(
@@ -465,104 +481,102 @@ class _TrendingProductsScreenState extends State<TrendingProductsScreen> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              gradientStartColor,
-              gradientEndColor,
-            ], // Apply theme colors
+            colors: [gradientStartColor, gradientEndColor],
           ),
         ),
         child: Column(
           children: [
-            _buildSearchBarAndSort(
-              isDarkMode,
-            ), // Add search bar and sort dropdown, pass isDarkMode
+            _buildSearchBarAndSort(isDarkMode),
             Expanded(
-              child:
-                  _isLoading
-                      ? _buildShimmerGrid(
-                        isDarkMode,
-                      ) // Use shimmer grid instead of simple progress indicator
-                      : _errorMessage.isNotEmpty
+              child: _isLoading
+                  ? _buildShimmerGrid(isDarkMode)
+                  : _errorMessage.isNotEmpty
                       ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Text(
-                            _errorMessage,
-                            textAlign: TextAlign.center,
-                            style: GoogleFonts.poppins(
-                              color:
-                                  isDarkMode ? Colors.red.shade300 : Colors.red,
-                              fontSize: 16,
-                            ), // Apply theme color
-                          ),
-                        ),
-                      )
-                      : _displayedProducts.isEmpty
-                      ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.info_outline,
-                              size: 80,
-                              color:
-                                  isDarkMode
-                                      ? Colors.grey[600]
-                                      : Colors.grey[400], // Apply theme color
-                            ),
-                            const SizedBox(height: 20),
-                            Text(
-                              _searchQuery.isNotEmpty
-                                  ? 'No trending products found matching "${_searchController.text}"!'
-                                  : 'No trending products available right now!',
-                              style: GoogleFonts.poppins(
-                                fontSize: 18,
-                                color: infoTextColor, // Apply theme color
-                                fontWeight: FontWeight.bold,
-                              ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Text(
+                              _errorMessage,
                               textAlign: TextAlign.center,
+                              style: GoogleFonts.poppins(
+                                color: isDarkMode ? Colors.red.shade300 : Colors.red,
+                                fontSize: 16,
+                              ),
                             ),
-                          ],
-                        ),
-                      )
-                      : Padding(
-                        padding: const EdgeInsets.all(12.0),
-                        child: GridView.builder(
-                          gridDelegate:
-                              SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: crossAxisCount,
-                                crossAxisSpacing: 12,
-                                mainAxisSpacing: 12,
-                                childAspectRatio: childAspectRatio,
-                              ),
-                          itemCount: _displayedProducts.length,
-                          itemBuilder: (context, index) {
-                            final product = _displayedProducts[index];
-                            return ChangeNotifierProvider<Product>.value(
-                              // Wrap with Provider
-                              value: product,
-                              child: GestureDetector(
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder:
-                                          (context) => ProductDetailPage(
-                                            product: product,
-                                          ),
+                          ),
+                        )
+                      : _displayedProducts.isEmpty
+                          ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.info_outline,
+                                    size: 80,
+                                    color: isDarkMode ? Colors.grey[600] : Colors.grey[400],
+                                  ),
+                                  const SizedBox(height: 20),
+                                  Text(
+                                    _searchQuery.isNotEmpty
+                                        ? 'No trending products found matching "${_searchController.text}"!'
+                                        : 'No trending products available right now!',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 18,
+                                      color: infoTextColor,
+                                      fontWeight: FontWeight.bold,
                                     ),
-                                  );
-                                },
-                                child: _buildProductTile(
-                                  context,
-                                  product,
-                                  isDarkMode,
-                                ), // Pass isDarkMode
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
                               ),
-                            );
-                          },
-                        ),
-                      ),
+                            )
+                          : NotificationListener<ScrollNotification>(
+                              onNotification: (scrollInfo) {
+                                if (scrollInfo.metrics.pixels >=
+                                    scrollInfo.metrics.maxScrollExtent * 0.7) {
+                                  final int currentIndex = (scrollInfo.metrics.pixels /
+                                          scrollInfo.metrics.maxScrollExtent *
+                                          _displayedProducts.length)
+                                      .toInt();
+                                  _preloadNextImages(currentIndex);
+                                }
+                                return true;
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.all(12.0),
+                                child: GridView.builder(
+                                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: crossAxisCount,
+                                    crossAxisSpacing: 12,
+                                    mainAxisSpacing: 12,
+                                    childAspectRatio: childAspectRatio,
+                                  ),
+                                  itemCount: _displayedProducts.length,
+                                  itemBuilder: (context, index) {
+                                    final product = _displayedProducts[index];
+                                    return ChangeNotifierProvider<Product>.value(
+                                      value: product,
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) => ProductDetailPage(
+                                                product: product,
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                        child: _buildProductTile(
+                                          context,
+                                          product,
+                                          isDarkMode,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
             ),
           ],
         ),
@@ -595,7 +609,6 @@ class _TrendingProductsScreenState extends State<TrendingProductsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              /// IMAGE
               Container(
                 height: 100,
                 width: double.infinity,
@@ -604,25 +617,15 @@ class _TrendingProductsScreenState extends State<TrendingProductsScreen> {
                     Center(
                       child: Padding(
                         padding: const EdgeInsets.all(6.0),
-                        child:
-                            _getEffectiveImageUrl(
-                                  product.imageUrl,
-                                ).startsWith('http')
-                                ? Image.network(
-                                  _getEffectiveImageUrl(product.imageUrl),
-                                  fit: BoxFit.contain,
-                                  errorBuilder:
-                                      (_, __, ___) =>
-                                          Image.asset('assets/placeholder.png'),
-                                )
-                                : Image.asset(
-                                  _getEffectiveImageUrl(product.imageUrl),
-                                  fit: BoxFit.contain,
-                                ),
+                        child: OptimizedImage(
+                          imageUrl: _getEffectiveImageUrl(product.imageUrl),
+                          fit: BoxFit.contain,
+                          placeholderAsset: 'assets/placeholder.png',
+                          width: 88,
+                          height: 88,
+                        ),
                       ),
                     ),
-
-                    /// Wishlist icon (top right)
                     Positioned(
                       top: 4,
                       right: 4,
@@ -635,7 +638,7 @@ class _TrendingProductsScreenState extends State<TrendingProductsScreen> {
                           return GestureDetector(
                             onTap: () async {
                               final result = await wishlist.toggleItem(product);
-                              if (result != null) {
+                              if (result != null && mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
                                     content: Text(
@@ -643,8 +646,7 @@ class _TrendingProductsScreenState extends State<TrendingProductsScreen> {
                                           ? '${product.title} added to wishlist!'
                                           : '${product.title} removed from wishlist!',
                                     ),
-                                    backgroundColor:
-                                        result ? Colors.blue : Colors.red,
+                                    backgroundColor: result ? Colors.blue : Colors.red,
                                   ),
                                 );
                               }
@@ -656,9 +658,7 @@ class _TrendingProductsScreenState extends State<TrendingProductsScreen> {
                                 shape: BoxShape.circle,
                               ),
                               child: Icon(
-                                isFavorite
-                                    ? Icons.favorite
-                                    : Icons.favorite_border,
+                                isFavorite ? Icons.favorite : Icons.favorite_border,
                                 color: const Color(0xffEB7720),
                                 size: 20,
                               ),
@@ -670,8 +670,6 @@ class _TrendingProductsScreenState extends State<TrendingProductsScreen> {
                   ],
                 ),
               ),
-
-              /// DETAILS
               Padding(
                 padding: const EdgeInsets.fromLTRB(8, 2, 6, 6),
                 child: Column(
@@ -698,7 +696,6 @@ class _TrendingProductsScreenState extends State<TrendingProductsScreen> {
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
-
                     Row(
                       children: [
                         Flexible(
@@ -706,8 +703,7 @@ class _TrendingProductsScreenState extends State<TrendingProductsScreen> {
                             '₹ ${currentMrp?.toStringAsFixed(2) ?? 'N/A'}',
                             style: GoogleFonts.poppins(
                               fontSize: 12,
-                              color:
-                                  isDarkMode ? Colors.grey[400] : Colors.grey,
+                              color: isDarkMode ? Colors.grey[400] : Colors.grey,
                               decoration:
                                   (currentSellingPrice != null &&
                                           currentSellingPrice != currentMrp)
